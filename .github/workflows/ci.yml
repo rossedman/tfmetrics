@@ -63,11 +63,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # govulncheck is a tool dependency in go.mod, so Dependabot keeps it current.
       - name: Run govulncheck
-        run: |
-          set -euo pipefail
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          make vuln
+        run: make vuln
 
   checks:
     name: Command, doc and benchmark checks

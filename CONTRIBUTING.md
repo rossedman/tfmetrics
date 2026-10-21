@@ -6,17 +6,18 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Report 
 
 ## Dev setup
 
-You need Go (the version in `go.mod`), `make` and `git`. `make check` also needs golangci-lint v2, GoReleaser v2, govulncheck and [uv](https://docs.astral.sh/uv/) (for the docs build).
+You need Go (the version in `go.mod`), `make` and `git`. `make check` also needs golangci-lint v2, GoReleaser v2 and [uv](https://docs.astral.sh/uv/) (for the docs build).
 
 ```sh
 git clone https://github.com/rossedman/tfmetrics.git
 cd tfmetrics
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 go install github.com/goreleaser/goreleaser/v2@latest
-go install golang.org/x/vuln/cmd/govulncheck@latest
 make build
 ./bin/tfmetrics version
 ```
+
+govulncheck is a tool dependency in `go.mod`, so `make vuln` runs it with `go tool govulncheck` and nothing needs installing.
 
 Useful targets: `make test` (race detector), `make cover` (coverage gate), `make bench`, `make fuzz`, `make lint` (also enforces gofmt and goimports), `make docs-serve` (live docs preview).
 
