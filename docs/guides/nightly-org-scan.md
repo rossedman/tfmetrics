@@ -2,7 +2,7 @@
 
 Scan every Terraform repo in your GitHub org on a schedule and publish one consistent set of metrics, with a GitHub Actions workflow that reuses its cache so unchanged repos cost almost nothing.
 
-You need a token that can read the repos, an org name, and a place to send the metrics. The example pushes to a [Pushgateway](dashboards.md#openmetrics-and-the-pushgateway) and keeps the [Parquet](dashboards.md#trends-with-parquet) tables as a build artifact.
+You need a token that can read the repos, an org name, and a place to send the metrics. The example pushes to a [Pushgateway](../sinks/openmetrics.md#2a-push-to-a-pushgateway) and keeps the [Parquet](dashboards.md#trends-with-parquet) tables as a build artifact.
 
 ## 1. Create a token
 

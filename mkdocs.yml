@@ -37,6 +37,14 @@ nav:
       - Nightly org scan: guides/nightly-org-scan.md
       - PR check: guides/pr-check.md
       - Dashboards and trends: guides/dashboards.md
+  - Sinks:
+      - Overview: sinks/index.md
+      - Prometheus: sinks/openmetrics.md
+      - OpenTelemetry: sinks/otlp.md
+      - Parquet: sinks/parquet.md
+      - CSV: sinks/csv.md
+      - JSON: sinks/json.md
+      - Markdown: sinks/markdown.md
   - Reference:
       - Metrics catalog: reference/metrics.md
       - Facts file: reference/facts.md

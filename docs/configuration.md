@@ -153,7 +153,7 @@ Weights are relative: the score divides by their sum, so they do not need to add
 
 ## sinks
 
-A list where each item has exactly one key, the sink name, whose value is that sink's options. `--sink` on the command line picks sinks by name and takes their options from the matching entry here. With neither, `aggregate` writes the `json` sink.
+A list where each item has exactly one key, the sink name, whose value is that sink's options. `--sink` on the command line picks sinks by name and takes their options from the matching entry here. With neither, `aggregate` writes the `json` sink. Each sink has a [tutorial](sinks/index.md) that walks through setting it up.
 
 | Sink | Option | Default | Description |
 | --- | --- | --- | --- |
