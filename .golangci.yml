@@ -1,0 +1,50 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - revive
+    - gosec
+    - misspell
+    - unused
+    - ineffassign
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-strings
+    gosec:
+      excludes:
+        # tfmetrics shells out to git with arguments it builds itself.
+        - G204
+        # Reading files from paths the user passed on the command line is the job.
+        - G304
+        # Facts, metrics and reports are meant to be readable by other tools.
+        - G301
+        - G306
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/rossedman/tfmetrics
