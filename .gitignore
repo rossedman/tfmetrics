@@ -51,3 +51,6 @@ bench.txt
 # Local tfmetrics output
 /facts/
 /metrics/
+
+# Python bytecode from MkDocs hooks
+__pycache__/
