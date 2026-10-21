@@ -203,7 +203,8 @@ func FuzzCompileMatches(f *testing.F) {
 		}
 		// A topic filter is case-insensitive.
 		r2 := Repo{Name: name, Topics: []string{strings.ToUpper(topic)}}
-		if strings.ToLower(strings.ToUpper(topic)) == strings.ToLower(topic) {
+		// Only when upper-casing round-trips; EqualFold would admit Unicode folds Matches does not.
+		if strings.ToLower(strings.ToUpper(topic)) == strings.ToLower(topic) { //nolint:staticcheck // SA6005: see above
 			tm := mustCompile(t, config.Filter{Topics: []string{topic}})
 			if !tm.Matches(r2) {
 				t.Fatalf("topic %q not matched case-insensitively", topic)

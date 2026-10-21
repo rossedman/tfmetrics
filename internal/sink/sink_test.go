@@ -71,17 +71,6 @@ func fixtureMetrics(results []facts.ScanResult) metrics.Metrics {
 	})
 }
 
-// seriesByName returns the values of every series with the given name.
-func seriesByName(m metrics.Metrics, name string) []metrics.Series {
-	var out []metrics.Series
-	for _, s := range m.Series {
-		if s.Name == name {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
 func TestParseSpecs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

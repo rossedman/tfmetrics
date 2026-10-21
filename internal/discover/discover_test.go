@@ -167,7 +167,7 @@ func TestOrgFilters(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(names(got), tt.want) && !(len(got) == 0 && len(tt.want) == 0) {
+			if !reflect.DeepEqual(names(got), tt.want) && (len(got) != 0 || len(tt.want) != 0) {
 				t.Fatalf("got %v want %v", names(got), tt.want)
 			}
 		})
