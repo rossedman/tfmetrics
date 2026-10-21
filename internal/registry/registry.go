@@ -220,8 +220,12 @@ func ParseTags(out []byte) []string {
 		if !ok {
 			continue
 		}
-		ref = strings.TrimSuffix(ref, "^{}")
-		if t, ok := strings.CutPrefix(ref, "refs/tags/"); ok {
+		for strings.HasSuffix(ref, "^{}") {
+			ref = strings.TrimSuffix(ref, "^{}")
+		}
+		// Skip empty names, and names that still look like refs; git forbids
+		// "^" in tag names so these only come from malformed output.
+		if t, ok := strings.CutPrefix(ref, "refs/tags/"); ok && t != "" && !strings.HasPrefix(t, "refs/") {
 			tags = append(tags, t)
 		}
 	}

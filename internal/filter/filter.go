@@ -149,14 +149,14 @@ func (s *Selector) Selected(r Repo) bool {
 func ParseProperty(s string) (string, []string, error) {
 	k, v, ok := strings.Cut(s, "=")
 	k = strings.TrimSpace(k)
-	if !ok || k == "" || strings.TrimSpace(v) == "" {
-		return "", nil, fmt.Errorf("property filter %q: want key=value[,value]", s)
-	}
 	var vals []string
 	for _, p := range strings.Split(v, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			vals = append(vals, p)
 		}
+	}
+	if !ok || k == "" || len(vals) == 0 {
+		return "", nil, fmt.Errorf("property filter %q: want key=value[,value]", s)
 	}
 	return k, vals, nil
 }

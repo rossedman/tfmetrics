@@ -122,7 +122,7 @@ func (n *Normalizer) classify(src string) Ref {
 	switch {
 	case strings.HasPrefix(lower, "github.com/") || strings.HasPrefix(lower, "bitbucket.org/"):
 		return gitRef(s)
-	case strings.HasPrefix(lower, "git@"):
+	case strings.HasPrefix(lower, "git@") || strings.HasPrefix(lower, "ssh://"):
 		return gitRef(s)
 	case strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://"):
 		u, err := url.Parse(s)
@@ -158,7 +158,7 @@ func splitForced(s string) (string, string, bool) {
 	}
 	getter := strings.ToLower(s[:i])
 	for _, c := range getter {
-		if c < 'a' || c > 'z' {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 			return "", "", false
 		}
 	}

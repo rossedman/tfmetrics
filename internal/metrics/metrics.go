@@ -271,6 +271,11 @@ func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int,
 	default:
 		return 0, false
 	}
+	if c.SourceKind == source.KindGit && isSHA(c.Version) {
+		// go-version would otherwise parse a hex SHA such as 0123abc... as a
+		// bogus version and report a misleading 0.
+		return 0, false
+	}
 	raw, err := opts.Versions.Versions(ctx, c.SourceKind, c.Address)
 	if err != nil {
 		if opts.OnLookupError != nil {
@@ -287,6 +292,19 @@ func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int,
 		return 0, false
 	}
 	return versions.Behind(pinned, avail), true
+}
+
+// isSHA reports whether s looks like an abbreviated or full git commit SHA.
+func isSHA(s string) bool {
+	if len(s) < 7 || len(s) > 40 {
+		return false
+	}
+	for _, c := range s {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // orNone returns s, or "none" when s is empty.
