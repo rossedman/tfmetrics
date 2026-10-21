@@ -2,7 +2,7 @@
 
 Pick where the numbers go. Send gauges to Prometheus or any OpenTelemetry backend for dashboards and alerts, and keep Parquet tables for questions about change over time.
 
-Every sink is generated from the same facts, so you can use several at once. Name them with `--sink` or list them under [`sinks`](../configuration.md#sinks).
+Every sink is generated from the same facts, so you can use several at once. The [sinks overview](../sinks/index.md) shows how to choose and configure them, with a tutorial for each.
 
 | Sink | Best for | Output |
 | --- | --- | --- |
@@ -13,26 +13,9 @@ Every sink is generated from the same facts, so you can use several at once. Nam
 | `json` | Archiving a run, custom tooling | `metrics.json` plus a copy of the facts |
 | `markdown` | PR comments and job summaries | One report per repo |
 
-## OpenMetrics and the Pushgateway
+## Prometheus
 
-tfmetrics is a batch job, not a server, so Prometheus cannot scrape it directly. Push the result to a [Pushgateway](https://github.com/prometheus/pushgateway) and let Prometheus scrape that.
-
-```yaml title="tfmetrics.yaml"
-sinks:
-  - openmetrics:
-      pushgateway: http://pushgateway.acme.internal:9091
-      job: tfmetrics
-```
-
-Each push replaces the whole `tfmetrics` group, so a repo you delete or a label value that disappears leaves Prometheus on the next push, instead of lingering at its last value. Prometheus keeps the history, which gives you trends for as long as you retain it.
-
-Without `pushgateway`, the sink writes `metrics/metrics.prom` in OpenMetrics text format, which you can publish from any static HTTP endpoint and add as a scrape target.
-
-The gauges carry no timestamp, so they read as "as of the last push". Alert when the job stops running:
-
-```promql
-time() - push_time_seconds{job="tfmetrics"} > 2 * 86400
-```
+Push each run to a Pushgateway, or serve the OpenMetrics file, and let Prometheus scrape it. The [Prometheus tutorial](../sinks/openmetrics.md) sets up either path, the scrape config and an alert for a job that stopped running. Once the gauges are in, these queries are a good first dashboard.
 
 ### Queries to start from
 
@@ -60,19 +43,7 @@ sum by (version, owner) (tf_module_calls{address="app.terraform.io/acme/sqs/aws"
 
 ## OpenTelemetry
 
-The `otlp` sink exports every series as a gauge over gRPC, with the resource attribute `service.name="tfmetrics"`.
-
-```yaml title="tfmetrics.yaml"
-sinks:
-  - otlp:
-      endpoint: otlp-gateway.example.com:443
-      headers:
-        x-api-key: "<your key>"
-```
-
-Header values are literal, and the config file does no environment expansion, so generate this file in CI from a secret rather than committing a key.
-
-Set `insecure: true` for a plaintext collector on a private network. The default endpoint is `localhost:4317`, which suits a collector running beside the job.
+The `otlp` sink sends the same gauges to an OpenTelemetry Collector, which forwards them to Datadog, Honeycomb, Grafana Cloud or any other backend it supports and holds the vendor credentials. The [OpenTelemetry tutorial](../sinks/otlp.md) runs a Collector locally first, then wires the exporters.
 
 ## Trends with Parquet
 
