@@ -10,7 +10,7 @@ Settings are merged in this order, highest first:
 2. Environment variables with the `TFMETRICS_` prefix. Dots and dashes become underscores: `--out` is `TFMETRICS_OUT`.
 3. The config file.
 
-Without `--config`, tfmetrics looks for `tfmetrics.yaml` in `$XDG_CONFIG_HOME/tfmetrics/`, `~/.config/tfmetrics/`, `~/` and the current directory, in that order, and uses the first one it finds. A missing file is fine; a file you name with `--config` must exist.
+Without `--config`, tfmetrics looks for `tfmetrics.yaml` in `$XDG_CONFIG_HOME/tfmetrics/`, `~/.config/tfmetrics/`, `~/` and the current directory, in that order, and uses the first one it finds. A missing file is fine; a file you name with `--config` must exist. Its format comes from its extension (`.yaml`, `.yml`, `.json` or `.toml`); any other name, such as `tfmetrics.conf`, is read as YAML.
 
 Secrets never go in the file. The file names an environment variable (`token_env`, `registry_token_env`) and tfmetrics reads the value from there.
 

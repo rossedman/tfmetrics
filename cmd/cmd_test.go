@@ -834,3 +834,26 @@ func TestResetFlagsIsolatesRuns(t *testing.T) {
 		t.Errorf("flags leaked between runs: %v", err)
 	}
 }
+
+func TestConfigFileWithoutYAMLExtension(t *testing.T) {
+	work := sandbox(t)
+	factsDir := scanFixture(t, work)
+	prom := filepath.Join(work, "conf-out", "metrics.prom")
+	for _, name := range []string{"tfmetrics.conf", "tfmetrics", "tfmetrics.ini", "tfmetrics.YML"} {
+		cfg := filepath.Join(work, name)
+		writeFile(t, cfg, fmt.Sprintf("sinks:\n  - openmetrics:\n      path: %s\n", prom))
+		_ = os.Remove(prom)
+		mustRun(t, "aggregate", factsDir, "--offline", "--config", cfg)
+		if _, err := os.Stat(prom); err != nil {
+			t.Errorf("--config %s: sink from the config did not run: %v", name, err)
+		}
+	}
+	// A known extension still picks its own format.
+	cfg := filepath.Join(work, "tfmetrics.json")
+	writeFile(t, cfg, fmt.Sprintf(`{"sinks": [{"openmetrics": {"path": %q}}]}`, prom))
+	_ = os.Remove(prom)
+	mustRun(t, "aggregate", factsDir, "--offline", "--config", cfg)
+	if _, err := os.Stat(prom); err != nil {
+		t.Errorf("--config tfmetrics.json: %v", err)
+	}
+}
