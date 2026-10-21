@@ -46,16 +46,16 @@ These functions parse untrusted input, transform data, or run once per repo, mod
 | `source.Normalizer.Classify`, `source.Pinning` | Parse every module source string as written in someone's repo | yes | yes |
 | `parse.Module` | Parses arbitrary HCL and JSON from every module directory | yes | yes |
 | `classify.FindModuleDirs` | Walks every file of every cloned repo | yes | |
-| `owners.FromCodeowners` | Parses CODEOWNERS files from every repo | | yes |
+| `owners.FromCodeowners` | Parses CODEOWNERS files from every repo | yes | yes |
 | `filter.Compile`, `filter.Selector.Selected` | Compile user patterns; run once per repo in every org | yes | yes |
 | `versions.Selected`, `versions.Behind` | Interpret version constraints and registry responses | yes | yes |
-| `registry.ParseTags` | Parses `git ls-remote` output from remotes | | yes |
-| `ghapi.Transport.RoundTrip` | Every GitHub and registry API call goes through it; it owns rate limit waits and backoff | yes | |
-| `discover.GitHub.HeadSHAs` | One GraphQL query per 100 repos replaces a git round trip per repo | yes | |
+| `registry.ParseTags` | Parses `git ls-remote` output from remotes | yes | yes |
+| `ghapi.Transport.RoundTrip` | Every GitHub and registry API call goes through it; it owns rate limit waits and backoff, parsing headers from the server | yes | yes |
+| `discover.GitHub.HeadSHAs` | One GraphQL query per 100 repos replaces a git round trip per repo; repo names are embedded in the query | yes | yes |
 | `pipeline.Run` | Orchestrates every clone and scan; the cached path is the common nightly case | yes | |
 | `metrics.Compute`, `metrics.Hygiene` | The aggregation hot loop over every facts file | yes | |
 | `sink.Rows`, OpenMetrics encoding | Run over every module, call and series on every emit | yes | |
-| `app.LoadConfig` | Config resolution (flag > env > file) for every command | tested | |
+| `app.LoadConfig` | Config resolution (flag > env > file) for every command, from a user-written YAML file | yes | yes |
 
 ## Commit style
 

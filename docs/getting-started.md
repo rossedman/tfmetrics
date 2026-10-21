@@ -45,7 +45,7 @@ Install the binary, scan one repo on disk, read the report, and write a metrics 
 
 ### Verify a release
 
-Every release is built by GitHub Actions. `checksums.txt` covers every archive and is signed keylessly with [cosign](https://docs.sigstore.dev/cosign/overview/) through the workflow's GitHub identity, so there is no key to trust or rotate.
+Every release is built by GitHub Actions. `checksums.txt` covers every archive and is signed keylessly with [cosign](https://docs.sigstore.dev/cosign/signing/overview/) through the workflow's GitHub identity, so there is no key to trust or rotate.
 
 ```sh
 cosign verify-blob checksums.txt \
