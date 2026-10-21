@@ -191,3 +191,23 @@ func BenchmarkHeadQuery(b *testing.B) {
 		_ = headQuery("acme", names)
 	}
 }
+
+// FuzzHeadQuery checks that any org and repo names are embedded as quoted,
+// escaped strings, so a name can never change the shape of the query.
+func FuzzHeadQuery(f *testing.F) {
+	f.Add("acme", "tf-network")
+	f.Add(`ac"me`, `b\c`)
+	f.Add("acme", "x\"){viewer{login}}r1:repository(owner:\"evil")
+	f.Fuzz(func(t *testing.T, org, name string) {
+		q := headQuery(org, []string{name, name})
+		o, _ := json.Marshal(org)
+		n, _ := json.Marshal(name)
+		alias := "repository(owner:" + string(o) + ",name:" + string(n) + ")"
+		if !strings.HasPrefix(q, "query{r0:"+alias) || !strings.HasSuffix(q, "}") {
+			t.Fatalf("query %q does not start with the escaped alias", q)
+		}
+		if got := strings.Count(q, alias); got < 2 {
+			t.Fatalf("query %q has %d copies of the alias, want 2", q, got)
+		}
+	})
+}
