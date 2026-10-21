@@ -20,7 +20,7 @@ type Markdown struct {
 
 // Emit writes one section per repo.
 func (m *Markdown) Emit(_ context.Context, results []facts.ScanResult, _ metrics.Metrics) error {
-	var w io.Writer = m.Stdout
+	w := m.Stdout
 	var files []*os.File
 	defer func() {
 		for _, f := range files {
@@ -40,7 +40,7 @@ func (m *Markdown) Emit(_ context.Context, results []facts.ScanResult, _ metrics
 	}
 	writers := []io.Writer{w}
 	if p := os.Getenv("GITHUB_STEP_SUMMARY"); m.StepSummary && p != "" {
-		f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
 			return err
 		}

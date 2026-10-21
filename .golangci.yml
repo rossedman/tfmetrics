@@ -27,6 +27,7 @@ linters:
         - G204
         # Reading files from paths the user passed on the command line is the job.
         - G304
+        - G703
         # Facts, metrics and reports are meant to be readable by other tools.
         - G301
         - G306

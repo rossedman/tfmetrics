@@ -12,12 +12,12 @@ import (
 
 // Config is the whole tfmetrics.yaml file.
 type Config struct {
-	Source  Source         `mapstructure:"source"`
-	Scan    Scan           `mapstructure:"scan"`
-	Modules Modules        `mapstructure:"modules"`
-	Labels  Labels         `mapstructure:"labels"`
-	Owners  Owners         `mapstructure:"owners"`
-	Hygiene Hygiene        `mapstructure:"hygiene"`
+	Source  Source                      `mapstructure:"source"`
+	Scan    Scan                        `mapstructure:"scan"`
+	Modules Modules                     `mapstructure:"modules"`
+	Labels  Labels                      `mapstructure:"labels"`
+	Owners  Owners                      `mapstructure:"owners"`
+	Hygiene Hygiene                     `mapstructure:"hygiene"`
 	Sinks   []map[string]map[string]any `mapstructure:"sinks"`
 }
 
