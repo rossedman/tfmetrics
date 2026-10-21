@@ -50,6 +50,7 @@ nav:
   - Project:
       - Contributing: contributing.md
       - Security: security.md
+      - Releases: https://github.com/rossedman/tfmetrics/releases
 
 theme:
   name: material

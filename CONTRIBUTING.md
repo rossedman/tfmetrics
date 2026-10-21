@@ -6,17 +6,18 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Report 
 
 ## Dev setup
 
-You need Go (the version in `go.mod`), `make` and `git`. `make check` also needs golangci-lint v2, GoReleaser v2, govulncheck and [uv](https://docs.astral.sh/uv/) (for the docs build).
+You need Go (the version in `go.mod`), `make` and `git`. `make check` also needs golangci-lint v2, GoReleaser v2 and [uv](https://docs.astral.sh/uv/) (for the docs build).
 
 ```sh
 git clone https://github.com/rossedman/tfmetrics.git
 cd tfmetrics
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 go install github.com/goreleaser/goreleaser/v2@latest
-go install golang.org/x/vuln/cmd/govulncheck@latest
 make build
 ./bin/tfmetrics version
 ```
+
+govulncheck is a tool dependency in `go.mod`, so `make vuln` runs it with `go tool govulncheck` and nothing needs installing.
 
 Useful targets: `make test` (race detector), `make cover` (coverage gate), `make bench`, `make fuzz`, `make lint` (also enforces gofmt and goimports), `make docs-serve` (live docs preview).
 
@@ -46,16 +47,16 @@ These functions parse untrusted input, transform data, or run once per repo, mod
 | `source.Normalizer.Classify`, `source.Pinning` | Parse every module source string as written in someone's repo | yes | yes |
 | `parse.Module` | Parses arbitrary HCL and JSON from every module directory | yes | yes |
 | `classify.FindModuleDirs` | Walks every file of every cloned repo | yes | |
-| `owners.FromCodeowners` | Parses CODEOWNERS files from every repo | | yes |
+| `owners.FromCodeowners` | Parses CODEOWNERS files from every repo | yes | yes |
 | `filter.Compile`, `filter.Selector.Selected` | Compile user patterns; run once per repo in every org | yes | yes |
 | `versions.Selected`, `versions.Behind` | Interpret version constraints and registry responses | yes | yes |
-| `registry.ParseTags` | Parses `git ls-remote` output from remotes | | yes |
-| `ghapi.Transport.RoundTrip` | Every GitHub and registry API call goes through it; it owns rate limit waits and backoff | yes | |
-| `discover.GitHub.HeadSHAs` | One GraphQL query per 100 repos replaces a git round trip per repo | yes | |
+| `registry.ParseTags` | Parses `git ls-remote` output from remotes | yes | yes |
+| `ghapi.Transport.RoundTrip` | Every GitHub and registry API call goes through it; it owns rate limit waits and backoff, parsing headers from the server | yes | yes |
+| `discover.GitHub.HeadSHAs` | One GraphQL query per 100 repos replaces a git round trip per repo; repo names are embedded in the query | yes | yes |
 | `pipeline.Run` | Orchestrates every clone and scan; the cached path is the common nightly case | yes | |
 | `metrics.Compute`, `metrics.Hygiene` | The aggregation hot loop over every facts file | yes | |
 | `sink.Rows`, OpenMetrics encoding | Run over every module, call and series on every emit | yes | |
-| `app.LoadConfig` | Config resolution (flag > env > file) for every command | tested | |
+| `app.LoadConfig` | Config resolution (flag > env > file) for every command, from a user-written YAML file | yes | yes |
 
 ## Commit style
 

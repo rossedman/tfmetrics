@@ -465,3 +465,17 @@ func FuzzParseTags(f *testing.F) {
 		}
 	})
 }
+
+func BenchmarkParseTags(b *testing.B) {
+	var sb strings.Builder
+	for i := range 500 {
+		fmt.Fprintf(&sb, "%040x\trefs/tags/v1.%d.0\n%040x\trefs/tags/v1.%d.0^{}\n", i, i, i+1, i)
+	}
+	out := []byte(sb.String())
+	b.ReportAllocs()
+	for b.Loop() {
+		if len(ParseTags(out)) != 1000 {
+			b.Fatal("unexpected tag count")
+		}
+	}
+}
