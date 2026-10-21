@@ -471,3 +471,67 @@ func TestRunEmpty(t *testing.T) {
 		t.Fatalf("summary = %+v", sum)
 	}
 }
+
+func TestRunUsesDiscoveredHead(t *testing.T) {
+	t.Parallel()
+	out, cdir := t.TempDir(), t.TempDir()
+	fc := &fakeCloner{}
+	r := remoteRepo("a")
+	r.HeadSHA = sha1
+	opts := Options{OutDir: out, Cloner: fc, Cache: cache.Cache{Dir: cdir}, Concurrency: 2}
+	sum := Run(context.Background(), []discover.Repo{r}, opts)
+	if fc.heads.Load() != 0 || sum.RemoteHeads != 0 || sum.Clones != 1 || sum.Scanned != 1 {
+		t.Fatalf("first run: heads %d, summary %+v", fc.heads.Load(), sum)
+	}
+	if sum.CloneTime <= 0 || sum.ScanTime <= 0 || sum.Wall <= 0 {
+		t.Errorf("timings not recorded: %+v", sum)
+	}
+	// Unchanged HEAD: served from the cache with no git call at all.
+	sum = Run(context.Background(), []discover.Repo{r}, opts)
+	if fc.heads.Load() != 0 || fc.clones.Load() != 1 || sum.Cached != 1 {
+		t.Fatalf("second run: heads %d clones %d, summary %+v", fc.heads.Load(), fc.clones.Load(), sum)
+	}
+	// An explicit ref cannot use the default-branch HEAD from discovery.
+	opts.Ref = "release"
+	sum = Run(context.Background(), []discover.Repo{r}, opts)
+	if fc.heads.Load() != 1 || sum.RemoteHeads != 1 || sum.HeadTime <= 0 {
+		t.Fatalf("with --ref: heads %d, summary %+v", fc.heads.Load(), sum)
+	}
+}
+
+// BenchmarkRunAllCached is the common nightly case: every repo's HEAD came
+// from discovery and matches the cache, so the run is pure local I/O.
+func BenchmarkRunAllCached(b *testing.B) {
+	out, cdir := b.TempDir(), b.TempDir()
+	fc := &fakeCloner{}
+	repos := make([]discover.Repo, 1000)
+	for i := range repos {
+		repos[i] = remoteRepo(fmt.Sprintf("r%d", i))
+		repos[i].HeadSHA = sha1
+	}
+	opts := Options{OutDir: out, Cloner: fc, Cache: cache.Cache{Dir: cdir}, Concurrency: 16}
+	if sum := Run(context.Background(), repos, opts); sum.Scanned != len(repos) {
+		b.Fatalf("warm-up: %+v", sum)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if sum := Run(context.Background(), repos, opts); sum.Cached != len(repos) {
+			b.Fatalf("summary %+v", sum)
+		}
+	}
+}
+
+// BenchmarkRunCloneLatency models clone-bound runs: 200 repos whose clones
+// each take 20ms, at the default concurrency.
+func BenchmarkRunCloneLatency(b *testing.B) {
+	fc := &fakeCloner{delay: 20 * time.Millisecond}
+	repos := make([]discover.Repo, 200)
+	for i := range repos {
+		repos[i] = remoteRepo(fmt.Sprintf("r%d", i))
+		repos[i].HeadSHA = sha1
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		Run(context.Background(), repos, Options{OutDir: b.TempDir(), Cloner: fc, Concurrency: 16})
+	}
+}

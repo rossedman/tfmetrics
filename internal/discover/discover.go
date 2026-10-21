@@ -18,6 +18,7 @@ import (
 
 	"github.com/rossedman/tfmetrics/internal/config"
 	"github.com/rossedman/tfmetrics/internal/filter"
+	"github.com/rossedman/tfmetrics/internal/ghapi"
 )
 
 // Repo is a repo selected for scanning.
@@ -28,6 +29,7 @@ type Repo struct {
 	CloneURL      string            `json:"clone_url,omitempty"`
 	LocalPath     string            `json:"local_path,omitempty"`
 	DefaultBranch string            `json:"default_branch,omitempty"`
+	HeadSHA       string            `json:"head_sha,omitempty"` // default branch HEAD at discovery, if known
 	Topics        []string          `json:"topics"`
 	Properties    map[string]string `json:"properties"`
 }
@@ -35,19 +37,35 @@ type Repo struct {
 // GitHub discovers repos through the GitHub API.
 type GitHub struct {
 	Client *github.Client
+	// Transport keeps every call within GitHub's rate limit policy and counts
+	// them; read Transport.Stats() after a run.
+	Transport *ghapi.Transport
+	// OnWarning is told about problems that only slow a run down; may be nil.
+	OnWarning func(msg string)
+
+	http       *http.Client
+	token      string
+	graphqlURL string
 }
 
 // NewGitHub returns a GitHub discoverer. baseURL is empty for github.com or a
-// GitHub Enterprise API URL. API calls are limited to rps per second.
+// GitHub Enterprise API URL. Calls go out one at a time, at most rps per
+// second, through a rate-limit-aware transport.
 func NewGitHub(token, baseURL string, rps float64) (*GitHub, error) {
 	if rps <= 0 {
 		rps = 10
 	}
-	hc := &http.Client{Transport: &limitedTransport{
+	tr := &ghapi.Transport{Base: &limitedTransport{
 		base:    http.DefaultTransport,
 		limiter: rate.NewLimiter(rate.Limit(rps), int(rps)+1),
 	}}
-	opts := []github.ClientOptionsFunc{github.WithHTTPClient(hc), github.WithUserAgent("tfmetrics")}
+	hc := &http.Client{Transport: tr}
+	opts := []github.ClientOptionsFunc{
+		github.WithHTTPClient(hc),
+		github.WithUserAgent("tfmetrics"),
+		// The transport waits out an exhausted limit instead of failing fast.
+		github.WithDisableRateLimitCheck(),
+	}
 	if token != "" {
 		opts = append(opts, github.WithAuthToken(token))
 	}
@@ -58,7 +76,17 @@ func NewGitHub(token, baseURL string, rps float64) (*GitHub, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &GitHub{Client: c}, nil
+	return &GitHub{Client: c, Transport: tr, http: hc, token: token, graphqlURL: GraphQLURL(baseURL)}, nil
+}
+
+// GraphQLURL returns the GraphQL endpoint for a REST base URL: github.com's
+// for an empty base, or <host>/api/graphql for GitHub Enterprise.
+func GraphQLURL(baseURL string) string {
+	if baseURL == "" {
+		return "https://api.github.com/graphql"
+	}
+	b := strings.TrimSuffix(strings.TrimSuffix(baseURL, "/"), "/api/v3")
+	return b + "/api/graphql"
 }
 
 // limitedTransport is a token bucket in front of an http.RoundTripper.
@@ -120,7 +148,28 @@ func (g *GitHub) Org(ctx context.Context, org config.Org, defaults config.RepoDe
 		opts.Page = resp.NextPage
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].FullName < out[j].FullName })
+	g.fillHeads(ctx, org.Name, out)
 	return out, nil
+}
+
+// fillHeads sets HeadSHA on each repo from batched GraphQL lookups, so the
+// cache check needs no git round trip per repo. A failure only costs speed:
+// repos without a HeadSHA fall back to git ls-remote.
+func (g *GitHub) fillHeads(ctx context.Context, org string, repos []Repo) {
+	if g.http == nil || len(repos) == 0 {
+		return
+	}
+	names := make([]string, len(repos))
+	for i, r := range repos {
+		names[i] = r.Name
+	}
+	heads, err := g.HeadSHAs(ctx, org, names)
+	if err != nil && g.OnWarning != nil {
+		g.OnWarning(fmt.Sprintf("head lookup in %s fell back to git ls-remote: %v", org, err))
+	}
+	for i := range repos {
+		repos[i].HeadSHA = heads[repos[i].Name]
+	}
 }
 
 // properties returns custom property values for every repo in an org, keyed

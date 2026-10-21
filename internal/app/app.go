@@ -8,13 +8,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 
 	"github.com/rossedman/tfmetrics/internal/config"
+	"github.com/rossedman/tfmetrics/internal/discover"
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/metrics"
+	"github.com/rossedman/tfmetrics/internal/pipeline"
 	"github.com/rossedman/tfmetrics/internal/registry"
 	"github.com/rossedman/tfmetrics/internal/scan"
 	"github.com/rossedman/tfmetrics/internal/sink"
@@ -106,6 +110,7 @@ func Aggregate(ctx context.Context, c config.Config, results []facts.ScanResult,
 		Weights:        c.Hygiene.Weights,
 	}
 	if lister != nil {
+		metrics.Prefetch(ctx, results, lister, registry.LookupConcurrency)
 		opts.Versions = lister
 		opts.OnLookupError = func(addr string, err error) {
 			fmt.Fprintf(warn, "warning: version lookup for %s: %v\n", addr, err)
@@ -168,4 +173,28 @@ func RemoteURL(arg, base string) (string, error) {
 		return strings.TrimSuffix(base, "/") + "/" + arg + ".git", nil
 	}
 	return "", fmt.Errorf("%s: not a directory, URL or owner/name", arg)
+}
+
+// RunStats summarizes where an org run spent its time and, when discovery
+// used the GitHub API, how much of the rate limit it used.
+func RunStats(sum pipeline.Summary, gh *discover.GitHub) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "time: %s wall; summed across workers: ls-remote %s (%d), clone %s (%d), parse %s",
+		sum.Wall.Round(time.Millisecond), sum.HeadTime.Round(time.Millisecond), sum.RemoteHeads,
+		sum.CloneTime.Round(time.Millisecond), sum.Clones, sum.ScanTime.Round(time.Millisecond))
+	if gh == nil || gh.Transport == nil {
+		return b.String()
+	}
+	st := gh.Transport.Stats()
+	fmt.Fprintf(&b, "\ngithub api: %d requests, %d retries, waited %s", st.Requests, st.Retries, st.Waited.Round(time.Second))
+	names := make([]string, 0, len(st.Limits))
+	for k := range st.Limits {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		l := st.Limits[k]
+		fmt.Fprintf(&b, "; %s %d/%d left", k, l.Remaining, l.Limit)
+	}
+	return b.String()
 }

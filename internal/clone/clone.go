@@ -7,9 +7,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/rossedman/tfmetrics/internal/registry"
 )
@@ -17,9 +21,87 @@ import (
 // SparsePatterns are the files checked out from each repo.
 var SparsePatterns = []string{"*.tf", "*.tf.json", "*.tofu", "*.tofu.json", "CODEOWNERS"}
 
-// Git runs git with optional token auth for one host.
+// Git runs git with optional token auth for one host. Transient failures
+// (throttling, server errors, dropped connections) are retried with
+// exponential backoff and jitter.
 type Git struct {
 	Token string // sent to the clone URL's host; never placed in the URL
+	// Retries caps retries of a transient failure; 0 means DefaultRetries,
+	// negative means none.
+	Retries int
+	// BaseDelay is the first backoff; it doubles per retry. 0 means 2s.
+	BaseDelay time.Duration
+	// Sleep is replaceable for tests.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+// DefaultRetries is how often a transient git failure is retried.
+const DefaultRetries = 3
+
+// transientMarkers are stderr fragments of git failures worth retrying.
+var transientMarkers = []string{
+	"429", "too many requests", "500", "502", "503", "504",
+	"internal server error", "bad gateway", "service unavailable", "gateway timeout",
+	"timed out", "timeout", "connection reset", "connection refused", "early eof",
+	"unexpected disconnect", "rpc failed", "remote end hung up", "could not resolve host",
+	"temporary failure", "tls handshake",
+}
+
+// Transient reports whether a git error looks like a temporary failure.
+func Transient(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	for _, m := range transientMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// retry runs f until it succeeds, fails permanently, or retries run out.
+// before is called ahead of each retry (for example to clean a directory).
+func (g Git) retry(ctx context.Context, f func() error, before func()) error {
+	retries := g.Retries
+	if retries == 0 {
+		retries = DefaultRetries
+	}
+	base := g.BaseDelay
+	if base <= 0 {
+		base = 2 * time.Second
+	}
+	sleep := g.Sleep
+	if sleep == nil {
+		sleep = sleepCtx
+	}
+	for attempt := 0; ; attempt++ {
+		err := f()
+		if err == nil || attempt >= retries || ctx.Err() != nil || !Transient(err) {
+			return err
+		}
+		d := base << attempt
+		d = d/2 + time.Duration(rand.Float64()*float64(d/2)) //nolint:gosec // G404: jitter needs no cryptographic randomness
+		if err := sleep(ctx, d); err != nil {
+			return err
+		}
+		if before != nil {
+			before()
+		}
+	}
+}
+
+// sleepCtx waits for d or until ctx is done.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // env returns the environment for a git command against rawURL.
@@ -59,6 +141,17 @@ func subcommand(args []string) string {
 // RemoteHead returns the commit SHA that ref (or HEAD when empty) points to on
 // the remote, without cloning.
 func (g Git) RemoteHead(ctx context.Context, rawURL, ref string) (string, error) {
+	var sha string
+	err := g.retry(ctx, func() error {
+		var err error
+		sha, err = g.remoteHead(ctx, rawURL, ref)
+		return err
+	}, nil)
+	return sha, err
+}
+
+// remoteHead does one attempt of RemoteHead.
+func (g Git) remoteHead(ctx context.Context, rawURL, ref string) (string, error) {
 	want := "HEAD"
 	if ref != "" {
 		want = ref
@@ -99,6 +192,25 @@ func isSHA(s string) bool {
 // Clone shallow-clones rawURL at ref (default branch when empty) into dir with
 // a sparse checkout, and returns the checked-out commit.
 func (g Git) Clone(ctx context.Context, rawURL, ref, dir string) (string, error) {
+	var sha string
+	err := g.retry(ctx, func() error {
+		var err error
+		sha, err = g.clone(ctx, rawURL, ref, dir)
+		return err
+	}, func() { emptyDir(dir) })
+	return sha, err
+}
+
+// emptyDir removes everything inside dir, so a clone can be retried into it.
+func emptyDir(dir string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+	}
+}
+
+// clone does one attempt of Clone.
+func (g Git) clone(ctx context.Context, rawURL, ref, dir string) (string, error) {
 	args := []string{"clone", "--depth", "1", "--filter=blob:none", "--no-checkout", "--quiet"}
 	if ref != "" && !isSHA(ref) {
 		args = append(args, "--branch", ref)

@@ -28,11 +28,14 @@ type Source struct {
 
 // GitHub configures discovery across one or more GitHub orgs.
 type GitHub struct {
-	TokenEnv string      `mapstructure:"token_env"`
-	BaseURL  string      `mapstructure:"base_url"` // GitHub Enterprise API URL; empty for github.com
-	CloneURL string      `mapstructure:"clone_url"`
-	Defaults RepoDefault `mapstructure:"defaults"`
-	Orgs     []Org       `mapstructure:"orgs"`
+	TokenEnv string `mapstructure:"token_env"`
+	BaseURL  string `mapstructure:"base_url"` // GitHub Enterprise API URL; empty for github.com
+	// MaxRetries caps retries of a throttled or failed API call; 0 means the
+	// default (6) and a negative value turns retries off.
+	MaxRetries int         `mapstructure:"max_retries"`
+	CloneURL   string      `mapstructure:"clone_url"`
+	Defaults   RepoDefault `mapstructure:"defaults"`
+	Orgs       []Org       `mapstructure:"orgs"`
 }
 
 // RepoDefault sets which kinds of repos are included by default.

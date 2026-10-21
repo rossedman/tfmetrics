@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rossedman/tfmetrics/internal/ghapi"
 	"github.com/rossedman/tfmetrics/internal/source"
 )
 
@@ -55,8 +56,14 @@ type result struct {
 
 // New returns a Resolver with sensible defaults.
 func New() *Resolver {
-	return &Resolver{HTTP: &http.Client{Timeout: 30 * time.Second}, Scheme: "https"}
+	// Registries are not GitHub's API, so lookups may run in parallel; they
+	// still back off on 429s, Retry-After and server errors.
+	tr := &ghapi.Transport{Concurrency: LookupConcurrency}
+	return &Resolver{HTTP: &http.Client{Timeout: 30 * time.Second, Transport: tr}, Scheme: "https"}
 }
+
+// LookupConcurrency is how many version lookups run at once.
+const LookupConcurrency = 8
 
 // Versions returns the versions available for a module address. Addresses of
 // other kinds return nil.

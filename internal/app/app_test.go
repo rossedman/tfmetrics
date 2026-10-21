@@ -4,16 +4,21 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 
 	"github.com/rossedman/tfmetrics/internal/config"
+	"github.com/rossedman/tfmetrics/internal/discover"
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/metrics"
+	"github.com/rossedman/tfmetrics/internal/pipeline"
 	"github.com/rossedman/tfmetrics/internal/sink"
 	"github.com/rossedman/tfmetrics/internal/source"
 )
@@ -494,6 +499,41 @@ func TestDottedAliasKeys(t *testing.T) {
 	for k, v := range want {
 		if got := c.Modules.Aliases[k]; got != v {
 			t.Errorf("aliases[%q] = %q, want %q (all: %v)", k, got, v, c.Modules.Aliases)
+		}
+	}
+}
+
+func TestRunStats(t *testing.T) {
+	t.Parallel()
+	sum := pipeline.Summary{Wall: 2 * time.Second, RemoteHeads: 3, HeadTime: time.Second, Clones: 5, CloneTime: 4 * time.Second, ScanTime: 300 * time.Millisecond}
+	got := RunStats(sum, nil)
+	for _, want := range []string{"2s wall", "ls-remote 1s (3)", "clone 4s (5)", "parse 300ms"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("RunStats = %q, missing %q", got, want)
+		}
+	}
+	if strings.Contains(got, "github api") {
+		t.Errorf("no API line without discovery: %q", got)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-RateLimit-Limit", "5000")
+		w.Header().Set("X-RateLimit-Remaining", "4990")
+		w.Header().Set("X-RateLimit-Reset", "1800000000")
+		w.Header().Set("X-RateLimit-Resource", "core")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	t.Cleanup(srv.Close)
+	gh, err := discover.NewGitHub("tok", srv.URL, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gh.Org(context.Background(), config.Org{Name: "acme"}, config.RepoDefault{}); err != nil {
+		t.Fatal(err)
+	}
+	got = RunStats(sum, gh)
+	for _, want := range []string{"github api: 2 requests, 0 retries", "core 4990/5000 left"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("RunStats = %q, missing %q", got, want)
 		}
 	}
 }
