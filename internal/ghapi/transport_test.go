@@ -388,3 +388,49 @@ func BenchmarkRoundTrip(b *testing.B) {
 		_ = resp.Body.Close()
 	}
 }
+
+// FuzzRetryAfter feeds arbitrary status codes and rate limit headers to the
+// retry policy. A wait is never negative and never longer than MaxWait unless
+// the transport would refuse it, and "no retry" always means no wait.
+func FuzzRetryAfter(f *testing.F) {
+	f.Add(429, "7", "", "")
+	f.Add(403, "", "0", "1800000090")
+	f.Add(403, "", "", "")
+	f.Add(503, "", "", "")
+	f.Add(429, "99999999999999999", "", "")
+	f.Add(403, "-5", "0", "-1")
+	f.Fuzz(func(t *testing.T, code int, retryAfter, remaining, reset string) {
+		c := newClock()
+		tr := newTransport(c)
+		tr.init()
+		h := http.Header{}
+		for k, v := range map[string]string{"Retry-After": retryAfter, "X-RateLimit-Remaining": remaining, "X-RateLimit-Reset": reset} {
+			if v != "" {
+				h.Set(k, v)
+			}
+		}
+		resp := &http.Response{StatusCode: code, Header: h, Body: io.NopCloser(strings.NewReader("rate limit"))}
+		for attempt := range 12 {
+			d, reason := tr.retryAfter(resp, attempt)
+			if reason == "" && d != 0 {
+				t.Fatalf("no retry but wait %s", d)
+			}
+			if d < 0 {
+				t.Fatalf("negative wait %s (code %d, retry-after %q, reset %q)", d, code, retryAfter, reset)
+			}
+		}
+	})
+}
+
+func TestHugeRetryAfterIsRefusedNotWrapped(t *testing.T) {
+	t.Parallel()
+	tr := newTransport(newClock())
+	tr.init()
+	for _, v := range []string{"99999999999999999", "9223372036854775807", "7200"} {
+		resp := &http.Response{StatusCode: 429, Header: http.Header{"Retry-After": {v}}, Body: io.NopCloser(strings.NewReader(""))}
+		d, reason := tr.retryAfter(resp, 0)
+		if reason == "" || d <= tr.MaxWait {
+			t.Errorf("Retry-After %s: wait %s (%q), want more than MaxWait %s so the request is refused", v, d, reason, tr.MaxWait)
+		}
+	}
+}

@@ -258,7 +258,10 @@ func (t *Transport) retryAfter(resp *http.Response, attempt int) (time.Duration,
 	switch resp.StatusCode {
 	case http.StatusForbidden, http.StatusTooManyRequests:
 		if s := resp.Header.Get("Retry-After"); s != "" {
-			if secs, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+			if secs, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64); err == nil {
+				// Clamp before converting so a huge value cannot overflow into a
+				// short wait; anything past MaxWait is refused by the caller.
+				secs = min(secs, int64(t.MaxWait/time.Second)+1)
 				return max(time.Duration(secs)*time.Second, time.Second), "rate limited (Retry-After)"
 			}
 		}
