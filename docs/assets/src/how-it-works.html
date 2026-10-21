@@ -1,0 +1,121 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="brand.css">
+<style>
+  body {
+    background:
+      radial-gradient(1000px 420px at 50% 0%, rgba(52,211,230,0.08), transparent 70%),
+      radial-gradient(700px 360px at 100% 100%, rgba(127,224,168,0.05), transparent 70%),
+      var(--ink);
+  }
+  .label { position: absolute; font-size: 13px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--brand); }
+  .cmd { position: absolute; top: 70px; height: 28px; display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--dim); }
+  .cmd b { color: var(--brand-2); font-weight: 500; }
+  .cmd::after { content: ""; flex: 1; height: 1px; background: var(--ink-3); }
+
+  .stage { position: absolute; width: 276px; height: 150px; border-radius: 16px; background: var(--ink-2);
+           border: 1px solid var(--ink-3); padding: 18px 20px 0; }
+  .stage .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800;
+              color: var(--ink); background: var(--brand); }
+  .stage b { display: block; margin-top: 12px; font-size: 20px; font-weight: 600; color: var(--cream); }
+  .stage span { display: block; margin-top: 6px; font-size: 14.5px; line-height: 1.45; color: var(--mist); }
+  .stage span code { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--brand-2); }
+
+  .facts { position: absolute; left: 52px; top: 308px; width: 372px; height: 186px; border-radius: 16px;
+           background: var(--ink-4); border: 1px solid var(--brand-3);
+           box-shadow: 0 0 0 5px rgba(52,211,230,0.07), 0 20px 50px rgba(0,0,0,0.45); overflow: hidden; }
+  .facts .bar { height: 36px; display: flex; align-items: center; padding: 0 18px; background: var(--ink-2); font-size: 13.5px; color: var(--cream); }
+  .facts .bar i { font-style: normal; margin-left: auto; color: var(--dim); font-size: 12.5px; }
+  .facts pre { padding: 12px 18px; font-size: 13px; line-height: 1.62; color: var(--mist); white-space: pre; }
+  .k { color: var(--cream); } .s { color: var(--ok); } .nm { color: var(--warn); } .dm { color: var(--dim); }
+
+  .agg { position: absolute; left: 470px; top: 308px; width: 300px; height: 186px; border-radius: 16px; background: var(--ink-2);
+         border: 1px solid var(--ink-3); padding: 18px 22px 0; }
+  .agg .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800; color: var(--ink); background: var(--brand); }
+  .agg b { display: block; margin-top: 12px; font-size: 20px; font-weight: 600; color: var(--cream); }
+  .agg span { display: block; margin-top: 6px; font-size: 14.5px; line-height: 1.5; color: var(--mist); }
+  .agg span em { font-style: normal; color: var(--cream); font-weight: 600; }
+
+  .sinks { position: absolute; left: 818px; top: 308px; width: 410px; height: 186px; border-radius: 16px;
+           border: 1px dashed var(--ink-3); padding: 14px 16px; }
+  .sinks h4 { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 10px; }
+  .chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .chip { height: 41px; border-radius: 10px; background: var(--ink-2); border: 1px solid var(--ink-3); padding: 5px 12px; }
+  .chip b { display: block; font-size: 13.5px; font-weight: 500; color: var(--cream); }
+  .chip span { display: block; font-size: 12px; color: var(--dim); margin-top: 1px; }
+
+  .notes { position: absolute; left: 52px; right: 52px; top: 538px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .note { height: 134px; padding: 18px 20px; border-radius: 14px; background: var(--ink); border: 1px solid var(--ink-3); }
+  .note .t { display: flex; align-items: center; gap: 10px; font-size: 16.5px; font-weight: 700; color: var(--cream); }
+  .note .t i { font-style: normal; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 15px; font-weight: 700; }
+  .note p { margin-top: 9px; font-size: 14px; line-height: 1.5; color: var(--mist); }
+  .note p code { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--cream); }
+  .i-brand { background: rgba(52,211,230,0.14); color: var(--brand); }
+  .i-bad { background: rgba(245,138,122,0.14); color: var(--bad); }
+  .i-ok { background: rgba(127,224,168,0.14); color: var(--ok); }
+
+  svg.wires { position: absolute; inset: 0; pointer-events: none; }
+</style></head>
+<body>
+  <div class="label" style="left:52px; top:34px">How it works</div>
+
+  <div class="cmd mono" style="left:52px; width:1176px"><span><b>tfmetrics org</b> · <b>scan</b></span></div>
+
+  <div class="stage" style="left:52px; top:110px"><div class="n">1</div><b class="mono">discover</b>
+    <span>GitHub orgs with name, topic and custom-property filters, or <code>--local-dir</code> of clones</span></div>
+  <div class="stage" style="left:352px; top:110px"><div class="n">2</div><b class="mono">classify</b>
+    <span><b style="display:inline;font-size:inherit;font-weight:600;color:var(--cream)">root</b> if it has a backend, cloud or configured provider; else child. Skips <code>.terraform</code>, <code>examples</code>, <code>test</code></span></div>
+  <div class="stage" style="left:652px; top:110px"><div class="n">3</div><b class="mono">parse</b>
+    <span>terraform-config-inspect plus a raw HCL walk. Never evaluated; errors become diagnostics</span></div>
+  <div class="stage" style="left:952px; top:110px; border-color: var(--brand-3)"><div class="n">4</div><b class="mono">extract</b>
+    <span>One <code>facts/&lt;org&gt;__&lt;repo&gt;.json</code> per repo, cached by commit SHA</span></div>
+
+  <div class="facts">
+    <div class="bar mono">facts/acme__infra.json<i>the contract</i></div>
+<pre class="mono"><span class="dm">{</span> <span class="k">"repo"</span>: <span class="s">"acme/infra"</span>, <span class="k">"schema_version"</span>: <span class="nm">1</span>,
+  <span class="k">"commit"</span>: <span class="s">"1c35bc0af618…"</span>,
+  <span class="k">"modules"</span>: [
+    { <span class="k">"path"</span>: <span class="s">"live/prod"</span>, <span class="k">"kind"</span>: <span class="s">"root"</span>,
+      <span class="k">"backend"</span>: <span class="s">"s3"</span>, <span class="k">"module_calls"</span>: [ <span class="dm">…</span> ],
+      <span class="k">"diagnostics"</span>: [] } <span class="dm">…</span> ] <span class="dm">}</span></pre>
+  </div>
+
+  <div class="agg"><div class="n">5</div><b class="mono">aggregate</b>
+    <span><em>17 tf_* gauges</em> and a 0 to 100 hygiene score, from facts alone. Version drift adds registry and git tag lookups; <code style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--brand-2)">--offline</code> skips them</span></div>
+
+  <div class="sinks"><h4>sinks</h4>
+    <div class="chips mono">
+      <div class="chip"><b>json</b><span>metrics.json + facts</span></div>
+      <div class="chip"><b>openmetrics</b><span>file or Pushgateway</span></div>
+      <div class="chip"><b>otlp</b><span>gauges over gRPC</span></div>
+      <div class="chip"><b>parquet</b><span>modules, calls</span></div>
+      <div class="chip"><b>csv</b><span>modules, calls</span></div>
+      <div class="chip"><b>markdown</b><span>per-repo report</span></div>
+    </div>
+  </div>
+
+  <div class="cmd mono" style="left:470px; width:758px; top:268px"><span><b>tfmetrics aggregate</b></span></div>
+
+  <div class="notes">
+    <div class="note"><div class="t"><i class="i-brand">∅</i>Static by design</div>
+      <p>No <code>terraform init</code>, plan or state, and no cloud APIs. Only the HCL on disk is read, and <code>count</code>, <code>for_each</code> and variables stay as written.</p></div>
+    <div class="note"><div class="t"><i class="i-bad">!</i>Parse errors are facts</div>
+      <p>A file that will not parse becomes a diagnostic and a <code>tf_parse_errors</code> count. The scan carries on with the rest of the repo.</p></div>
+    <div class="note"><div class="t"><i class="i-ok">↻</i>Re-run without rescanning</div>
+      <p>Facts are cached by commit SHA. Change a weight or a label and re-aggregate saved facts without cloning anything.</p></div>
+  </div>
+
+  <svg class="wires" viewBox="0 0 1280 720">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#86a0a8"/></marker>
+      <marker id="ab" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#34d3e6"/></marker>
+    </defs>
+    <g stroke="#86a0a8" stroke-width="2" fill="none" marker-end="url(#a)">
+      <path d="M330 185 L349 185"/><path d="M630 185 L649 185"/><path d="M930 185 L949 185"/>
+    </g>
+    <!-- extract down into the facts file -->
+    <path d="M1090 262 L1090 290 L238 290 L238 305" stroke="#34d3e6" stroke-width="2" fill="none" marker-end="url(#ab)"/>
+    <!-- facts to aggregate to sinks -->
+    <path d="M426 400 L467 400" stroke="#34d3e6" stroke-width="2" fill="none" marker-end="url(#ab)"/>
+    <path d="M772 400 L815 400" stroke="#86a0a8" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  </svg>
+</body></html>

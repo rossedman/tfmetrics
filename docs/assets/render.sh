@@ -36,6 +36,7 @@ if [ "$(id -u)" = 0 ]; then extra+=(--no-sandbox); fi
 # name width height (CSS pixels; the PNG is twice that)
 targets="
 banner 1280 400
+how-it-works 1280 720
 social-preview 1280 640
 "
 
