@@ -116,11 +116,26 @@ cached  acme/tf-compute
 cached  acme/tf-network
 scanned acme/tf-data
 3 repos: 1 scanned, 2 from cache, 0 failed -> facts/
+time: 5ms wall; summed across workers: ls-remote 0s (0), clone 0s (0), parse 1ms
 $ tfmetrics aggregate facts/ --offline
 aggregated 3 repos (3 with Terraform) into 106 series
 ```
 
-`--local-dir` scans a directory of existing clones instead of calling GitHub; against GitHub the output has the same shape. A repo that fails to clone or scan prints `error   <repo>: <reason>` and is counted under `failed`.
+`--local-dir` scans a directory of existing clones instead of calling GitHub. Against GitHub the output has the same shape plus a `github api:` line with the requests made, retries, time spent waiting and the rate limit left in each bucket. A repo that fails to clone or scan prints `error   <repo>: <reason>` and is counted under `failed`.
+
+The `time:` line shows where a run spent its time. Durations after "summed across workers" add up every worker's time, so they can exceed the wall-clock time; compare them with each other to find the bottleneck.
+
+## Rate limits and speed
+
+At org scale the cost of a run is network round trips, not parsing: parsing a 4,000-file monorepo takes under two seconds, while every git or API call is a few hundred milliseconds of latency. tfmetrics keeps those calls few and within GitHub's policy:
+
+- **Discovery is a handful of API calls.** Repos and custom property values come 100 per page, and each repo's default-branch `HEAD` comes from one GraphQL query per 100 repos (about one point of the 5,000-point hourly budget). A 1,000-repo org costs roughly 30 calls.
+- **Unchanged repos cost nothing more.** The `HEAD` from discovery is checked against the cache with no git call, so a nightly run where most repos did not change makes no clones at all. A run with `--ref` falls back to one `git ls-remote` per repo.
+- **API calls follow GitHub's rules.** Requests go out one at a time. An exhausted primary limit waits for its `x-ratelimit-reset`; a secondary limit honors `Retry-After`, or waits a minute and doubles; server errors and dropped connections back off exponentially with jitter. Each wait is printed as `github api: <reason>; waiting <duration>`. `source.github.max_retries` caps the retries, and a negative value fails fast.
+- **Clones are cheap and retried.** Each clone is shallow, with a sparse checkout of only `*.tf`, `*.tf.json`, `*.tofu` and `CODEOWNERS`; on `hashicorp/terraform-provider-aws` that is 44 MB and 2 s instead of 474 MB and 11 s. Throttled or dropped clones (429, 5xx, connection resets) are retried up to three times with backoff. Clones run `scan.concurrency` at a time (16 by default); raise it on a runner with more bandwidth.
+- **Version lookups run in parallel.** `aggregate` looks up each distinct module address once, eight at a time, with the same backoff on throttling.
+
+Clones go to the system temp directory. On a runner with slow disks, point `TMPDIR` at a tmpfs such as `/dev/shm` to keep them in memory; a sparse clone of a typical module repo is about 1 MB.
 
 ## Several orgs
 

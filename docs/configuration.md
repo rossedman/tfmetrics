@@ -23,6 +23,7 @@ source:
   github:
     token_env: GITHUB_TOKEN        # env var holding the token
     base_url: ""                   # GitHub Enterprise API URL; empty = github.com
+    max_retries: 0                 # retries of a throttled or failed API call; 0 = 6, negative = none
     clone_url: ""                  # base for `scan owner/name`; empty = https://github.com
     defaults:
       archived: false              # include archived repos
@@ -83,6 +84,7 @@ Where repos come from. `tfmetrics org` needs at least one org here or `--org` on
 | --- | --- | --- |
 | `token_env` | `GITHUB_TOKEN` | Name of the environment variable that holds a GitHub token. Used for the API, for clones and for private git module tag lookups. |
 | `base_url` | empty | API URL of a GitHub Enterprise Server, such as `https://ghe.acme.com/api/v3/`. Empty means github.com. |
+| `max_retries` | `0` (6 retries) | How often a throttled or failed API call is retried. Waits follow GitHub's rate limit policy; see [Rate limits and speed](guides/nightly-org-scan.md#rate-limits-and-speed). A negative value turns retries off. |
 | `clone_url` | `https://github.com` | Base URL that `tfmetrics scan owner/name` clones from. Org scans use the clone URL the API returns. |
 | `defaults.archived` | `false` | Include archived repos. |
 | `defaults.forks` | `false` | Include forks. |

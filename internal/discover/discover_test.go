@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -54,6 +55,9 @@ type fakeGH struct {
 	repoCode  int
 	srv       *httptest.Server
 	hits      atomic.Int32
+	heads     map[string]string // repo name -> HEAD oid served by GraphQL
+	gqlCode   int
+	gqlHits   atomic.Int32
 }
 
 func newFakeGH(t *testing.T, f *fakeGH) *GitHub {
@@ -100,6 +104,25 @@ func newFakeGH(t *testing.T, f *fakeGH) *GitHub {
 		}
 		_ = json.NewEncoder(w).Encode(f.props[lo:hi])
 	})
+	mux.HandleFunc("POST /api/graphql", func(w http.ResponseWriter, r *http.Request) {
+		f.gqlHits.Add(1)
+		if f.gqlCode != 0 {
+			http.Error(w, `{"message":"gql"}`, f.gqlCode)
+			return
+		}
+		var req struct{ Query string }
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		data := map[string]any{}
+		for _, m := range regexp.MustCompile(`(r\d+):repository\(owner:"[^"]*",name:"([^"]*)"\)`).FindAllStringSubmatch(req.Query, -1) {
+			oid, ok := f.heads[m[2]]
+			if !ok {
+				data[m[1]] = nil
+				continue
+			}
+			data[m[1]] = map[string]any{"name": m[2], "defaultBranchRef": map[string]any{"target": map[string]any{"oid": oid}}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+	})
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 
@@ -107,6 +130,7 @@ func newFakeGH(t *testing.T, f *fakeGH) *GitHub {
 	if err != nil {
 		t.Fatal(err)
 	}
+	g.Transport.Sleep = func(context.Context, time.Duration) error { return nil }
 	return g
 }
 

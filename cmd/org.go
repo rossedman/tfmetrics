@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -60,6 +61,7 @@ calling GitHub.`,
 		}
 		token := app.GitHubToken(cfg)
 		var repos []discover.Repo
+		var gh *discover.GitHub
 		localDir, _ := cmd.Flags().GetString("local-dir")
 		if localDir != "" {
 			if len(orgs) != 1 {
@@ -67,7 +69,7 @@ calling GitHub.`,
 			}
 			repos, err = discover.LocalDir(localDir, orgs[0].Name, orgs[0].Include, orgs[0].Exclude)
 		} else {
-			repos, err = discoverGitHub(cmd, cfg, orgs, token)
+			repos, gh, err = discoverGitHub(cmd, cfg, orgs, token)
 		}
 		if err != nil {
 			return err
@@ -107,6 +109,7 @@ calling GitHub.`,
 		})
 		fmt.Fprintf(stderr, "%d repos: %d scanned, %d from cache, %d failed -> %s\n",
 			len(repos), sum.Scanned, sum.Cached, len(sum.Failed), out)
+		fmt.Fprintln(stderr, app.RunStats(sum, gh))
 		if len(sum.Failed) > 0 && len(sum.Failed) == len(repos) {
 			return fmt.Errorf("every repo failed to scan")
 		}
@@ -131,21 +134,28 @@ calling GitHub.`,
 	},
 }
 
-// discoverGitHub lists the matching repos in each org.
-func discoverGitHub(cmd *cobra.Command, cfg config.Config, orgs []config.Org, token string) ([]discover.Repo, error) {
+// discoverGitHub lists the matching repos in each org, waiting out rate
+// limits and reporting each wait on stderr.
+func discoverGitHub(cmd *cobra.Command, cfg config.Config, orgs []config.Org, token string) ([]discover.Repo, *discover.GitHub, error) {
 	gh, err := discover.NewGitHub(token, cfg.Source.GitHub.BaseURL, 10)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	stderr := cmd.ErrOrStderr()
+	gh.Transport.MaxRetries = cfg.Source.GitHub.MaxRetries
+	gh.Transport.OnWait = func(reason string, d time.Duration) {
+		fmt.Fprintf(stderr, "github api: %s; waiting %s\n", reason, d.Round(time.Second))
+	}
+	gh.OnWarning = func(msg string) { fmt.Fprintln(stderr, "warning:", msg) }
 	var repos []discover.Repo
 	for _, o := range orgs {
 		found, err := gh.Org(cmd.Context(), o, cfg.Source.GitHub.Defaults)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		repos = append(repos, found...)
 	}
-	return repos, nil
+	return repos, gh, nil
 }
 
 // orgsFromFlags applies --org and the filter flags to the configured orgs.

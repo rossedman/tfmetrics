@@ -727,7 +727,7 @@ func TestOrgGitHubErrorsFake(t *testing.T) {
 		http.Error(w, `{"message":"boom"}`, http.StatusInternalServerError)
 	}))
 	t.Cleanup(srv.Close)
-	writeFile(t, filepath.Join(work, "gh.yaml"), fmt.Sprintf("source:\n  github:\n    base_url: %s\n", srv.URL))
+	writeFile(t, filepath.Join(work, "gh.yaml"), fmt.Sprintf("source:\n  github:\n    base_url: %s\n    max_retries: -1\n", srv.URL))
 	if _, _, err := run(t, "org", "--config", "gh.yaml", "--org", "acme", "--dry-run"); err == nil {
 		t.Error("API failure should surface")
 	}

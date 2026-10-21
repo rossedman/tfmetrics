@@ -15,6 +15,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/rossedman/tfmetrics/internal/ghapi"
 
 	"github.com/rossedman/tfmetrics/internal/source"
 )
@@ -64,7 +67,31 @@ func (f *fakeRegistry) host() string { return strings.TrimPrefix(f.URL, "http://
 func newResolver() *Resolver {
 	r := New()
 	r.Scheme = "http"
+	// Retries are the transport's business (tested in ghapi); here one
+	// request per lookup keeps hit counts exact.
+	r.HTTP.Transport.(*ghapi.Transport).MaxRetries = -1
 	return r
+}
+
+func TestNewRetriesServerErrors(t *testing.T) {
+	t.Parallel()
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			http.Error(w, "busy", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"modules":[{"versions":[{"version":"1.0.0"}]}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	r := New()
+	r.Scheme = "http"
+	r.HTTP.Transport.(*ghapi.Transport).Sleep = func(context.Context, time.Duration) error { return nil }
+	r.services = map[string]string{"h": srv.URL + "/"}
+	got, err := r.Versions(context.Background(), source.KindRegistry, "h/a/b/c")
+	if err != nil || len(got) != 1 || hits.Load() != 2 {
+		t.Fatalf("got %v, %v after %d hits; want one retry then success", got, err, hits.Load())
+	}
 }
 
 func TestNew(t *testing.T) {

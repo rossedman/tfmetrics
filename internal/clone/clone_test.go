@@ -2,12 +2,14 @@ package clone
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // srcRepo is a local repo served over file://.
@@ -325,5 +327,98 @@ func TestIsSHA(t *testing.T) {
 		if got := isSHA(tt.in); got != tt.want {
 			t.Errorf("isSHA(%q) = %v", tt.in, got)
 		}
+	}
+}
+
+func TestTransient(t *testing.T) {
+	t.Parallel()
+	for msg, want := range map[string]bool{
+		"git clone: exit status 128: fatal: unable to access 'https://github.com/a/b/': The requested URL returned error: 429": true,
+		"error: RPC failed; HTTP 502 curl 22":             true,
+		"fatal: the remote end hung up unexpectedly":      true,
+		"fetch-pack: unexpected disconnect while reading": true,
+		"Could not resolve host: github.com":              true,
+		"fatal: repository 'x' not found":                 false,
+		"fatal: Authentication failed":                    false,
+		"Remote branch nope not found in upstream":        false,
+	} {
+		if got := Transient(errors.New(msg)); got != want {
+			t.Errorf("Transient(%q) = %v, want %v", msg, got, want)
+		}
+	}
+	if Transient(nil) {
+		t.Error("nil is not transient")
+	}
+}
+
+func TestRetry(t *testing.T) {
+	t.Parallel()
+	transient := errors.New("HTTP 503 Service Unavailable")
+	permanent := errors.New("repository not found")
+	tests := []struct {
+		name      string
+		retries   int
+		errs      []error
+		wantCalls int
+		wantErr   error
+	}{
+		{"success first time", 0, []error{nil}, 1, nil},
+		{"transient then success", 0, []error{transient, transient, nil}, 3, nil},
+		{"gives up after default retries", 0, []error{transient, transient, transient, transient, transient}, DefaultRetries + 1, transient},
+		{"permanent is not retried", 0, []error{permanent}, 1, permanent},
+		{"negative retries disables", -1, []error{transient, nil}, 1, transient},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var sleeps []time.Duration
+			g := Git{Retries: tt.retries, BaseDelay: time.Second, Sleep: func(_ context.Context, d time.Duration) error {
+				sleeps = append(sleeps, d)
+				return nil
+			}}
+			calls, befores := 0, 0
+			err := g.retry(context.Background(), func() error {
+				calls++
+				return tt.errs[min(calls-1, len(tt.errs)-1)]
+			}, func() { befores++ })
+			if !errors.Is(err, tt.wantErr) || calls != tt.wantCalls || befores != calls-1 || len(sleeps) != calls-1 {
+				t.Fatalf("err %v calls %d befores %d sleeps %v", err, calls, befores, sleeps)
+			}
+			for i, d := range sleeps {
+				lo, hi := time.Second<<i/2, time.Second<<i
+				if d < lo || d > hi {
+					t.Errorf("sleep %d = %s, want within [%s, %s]", i, d, lo, hi)
+				}
+			}
+		})
+	}
+}
+
+func TestRetryStopsOnCancel(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	g := Git{Sleep: func(ctx context.Context, _ time.Duration) error { cancel(); return ctx.Err() }}
+	calls := 0
+	err := g.retry(ctx, func() error { calls++; return errors.New("connection reset") }, nil)
+	if !errors.Is(err, context.Canceled) || calls != 1 {
+		t.Fatalf("err %v calls %d", err, calls)
+	}
+	if err := sleepCtx(ctx, time.Hour); !errors.Is(err, context.Canceled) {
+		t.Fatalf("sleepCtx = %v", err)
+	}
+	if err := sleepCtx(context.Background(), time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEmptyDir(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write(t, dir, "a.tf", "x")
+	write(t, dir, "sub/b.tf", "y")
+	emptyDir(dir)
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("entries %v err %v", entries, err)
 	}
 }

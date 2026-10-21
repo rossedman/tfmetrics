@@ -7,6 +7,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rossedman/tfmetrics/internal/facts"
@@ -258,17 +259,7 @@ func repoMetrics(ctx context.Context, b *builder, r facts.ScanResult, base map[s
 // versionsBehind looks up how far one call lags. ok is false when it cannot
 // be known (no lister, unpinned, a SHA ref, or a failed lookup).
 func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int, bool) {
-	if opts.Versions == nil || c.Version == "" {
-		return 0, false
-	}
-	switch c.SourceKind {
-	case source.KindRegistry, source.KindPrivateRegistry, source.KindGit:
-	default:
-		return 0, false
-	}
-	if c.SourceKind == source.KindGit && isSHA(c.Version) {
-		// go-version would otherwise parse a hex SHA such as 0123abc... as a
-		// bogus version and report a misleading 0.
+	if opts.Versions == nil || !needsLookup(c) {
 		return 0, false
 	}
 	raw, err := opts.Versions.Versions(ctx, c.SourceKind, c.Address)
@@ -352,4 +343,61 @@ func sortSeries(series []Series) {
 	for i := range ks {
 		series[i] = ks[i].s
 	}
+}
+
+// needsLookup reports whether a call's drift can be computed from a version
+// list: a pinned registry or git call whose ref is not a commit SHA.
+func needsLookup(c facts.ModuleCall) bool {
+	if c.Version == "" {
+		return false
+	}
+	switch c.SourceKind {
+	case source.KindRegistry, source.KindPrivateRegistry:
+		return true
+	case source.KindGit:
+		// go-version would otherwise parse a hex SHA such as 0123abc... as a
+		// bogus version and report a misleading 0.
+		return !isSHA(c.Version)
+	}
+	return false
+}
+
+// Prefetch looks up the versions of every distinct module address that
+// Compute will need, n at a time, so a caching lister answers Compute's
+// serial lookups from memory. Errors are left for Compute to report.
+func Prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLister, n int) {
+	if lister == nil {
+		return
+	}
+	type key struct{ kind, addr string }
+	seen := map[key]bool{}
+	var keys []key
+	for _, r := range results {
+		for _, m := range r.Modules {
+			for _, c := range m.ModuleCalls {
+				k := key{c.SourceKind, c.Address}
+				if needsLookup(c) && !seen[k] {
+					seen[k] = true
+					keys = append(keys, k)
+				}
+			}
+		}
+	}
+	jobs := make(chan key)
+	var wg sync.WaitGroup
+	for range max(n, 1) {
+		wg.Go(func() {
+			for k := range jobs {
+				_, _ = lister.Versions(ctx, k.kind, k.addr)
+			}
+		})
+	}
+	for _, k := range keys {
+		if ctx.Err() != nil {
+			break
+		}
+		jobs <- k
+	}
+	close(jobs)
+	wg.Wait()
 }
