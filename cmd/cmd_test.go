@@ -394,8 +394,6 @@ sinks:
 
 	// Naming a sink on the command line takes its options from the config
 	// and replaces the configured list.
-	other := filepath.Join(work, "custom", "only-json")
-	_ = other
 	if err := os.Remove(prom); err != nil {
 		t.Fatal(err)
 	}
@@ -414,8 +412,7 @@ func TestAggregateConfigDiscovery(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(work, "from-cwd.prom")); err != nil {
 		t.Error(err)
 	}
-	// So is one under $XDG_CONFIG_HOME/tfmetrics, but the cwd one wins nothing here:
-	// remove the cwd file and check XDG.
+	// So is one under $XDG_CONFIG_HOME/tfmetrics once the cwd file is gone.
 	if err := os.Remove(filepath.Join(work, "tfmetrics.yaml")); err != nil {
 		t.Fatal(err)
 	}

@@ -252,7 +252,7 @@ func TestPushgateway(t *testing.T) {
 		}
 		names[mf.GetName()] = len(mf.Metric)
 	}
-	if names[metrics.ReposTotal] != 1 || names[metrics.ModulesTotal] == 0 {
+	if names[metrics.ReposTotal] != 2 || names[metrics.ModulesTotal] == 0 {
 		t.Errorf("pushed families = %v", names)
 	}
 }

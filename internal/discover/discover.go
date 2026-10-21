@@ -168,7 +168,13 @@ func propertyValues(v any) []string {
 		}
 		return []string{t}
 	case []string:
-		return t
+		var out []string
+		for _, s := range t {
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
 	case []any:
 		var out []string
 		for _, x := range t {

@@ -91,16 +91,23 @@ func TestExport(t *testing.T) {
 			t.Errorf("%s: %d points, want %d", name, len(got[name]), n)
 		}
 	}
-	// Spot-check one series' attributes and value, and descriptions.
-	for _, s := range seriesByName(m, metrics.ReposTotal) {
-		dp := got[metrics.ReposTotal][0]
-		if dp.Value != s.Value {
-			t.Errorf("repos_total = %v want %v", dp.Value, s.Value)
-		}
-		for k, v := range s.Labels {
-			if a, ok := dp.Attributes.Value(attribute.Key(k)); !ok || a.AsString() != v {
-				t.Errorf("attr %s = %v want %s", k, a, v)
+	// Every series arrives with its value and attributes.
+	for _, s := range m.Series {
+		found := false
+		for _, dp := range got[s.Name] {
+			ok := dp.Value == s.Value && dp.Attributes.Len() == len(s.Labels)
+			for k, v := range s.Labels {
+				if a, has := dp.Attributes.Value(attribute.Key(k)); !has || a.AsString() != v {
+					ok = false
+				}
 			}
+			if ok {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("series %s%v=%v missing", s.Name, s.Labels, s.Value)
 		}
 	}
 	for _, sm := range rm.ScopeMetrics {
@@ -274,7 +281,7 @@ func TestOTLPEmitUnreachable(t *testing.T) {
 	}
 	addr := lis.Addr().String()
 	_ = lis.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	err = (&OTLP{Endpoint: addr, Insecure: true}).Emit(ctx, nil, fixtureMetrics(fixtureResults()))
 	if err == nil {
