@@ -1,0 +1,23 @@
+{
+  "variable": {
+    "name": {
+      "type": "string",
+      "description": "Queue name"
+    }
+  },
+  "resource": {
+    "aws_sqs_queue": {
+      "this": {
+        "name": "${var.name}",
+        "lifecycle": {
+          "prevent_destroy": true
+        }
+      }
+    }
+  },
+  "output": {
+    "arn": {
+      "value": "${aws_sqs_queue.this.arn}"
+    }
+  }
+}

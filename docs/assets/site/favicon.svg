@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="3.0 3.0 194.0 194.0">
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8f9fd"/><stop offset="1" stop-color="#8be8f6"/></linearGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#52dcee"/><stop offset="1" stop-color="#1fb1c7"/></linearGradient>
+    <linearGradient id="right" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1e9eb5"/><stop offset="1" stop-color="#0c6479"/></linearGradient>
+  </defs>
+  <polygon points="105.6,119.9 145.8,143.1 145.8,50.4 105.6,27.2" fill="url(#left)"/>
+  <polygon points="145.8,143.1 185.9,119.9 185.9,27.2 145.8,50.4" fill="url(#right)"/>
+  <polygon points="105.6,27.2 145.8,50.4 185.9,27.2 145.8,4.0" fill="url(#top)"/>
+  <polygon points="59.8,146.4 100.0,169.6 100.0,108.3 59.8,85.2" fill="url(#left)"/>
+  <polygon points="100.0,169.6 140.2,146.4 140.2,85.2 100.0,108.3" fill="url(#right)"/>
+  <polygon points="59.8,85.2 100.0,108.3 140.2,85.2 100.0,62.0" fill="url(#top)"/>
+  <polygon points="14.1,172.8 54.2,196.0 54.2,164.5 14.1,141.3" fill="url(#left)"/>
+  <polygon points="54.2,196.0 94.4,172.8 94.4,141.3 54.2,164.5" fill="url(#right)"/>
+  <polygon points="14.1,141.3 54.2,164.5 94.4,141.3 54.2,118.1" fill="url(#top)"/>
+</svg>

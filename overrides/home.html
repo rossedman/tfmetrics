@@ -1,0 +1,230 @@
+{#- The landing page. Everything renders in the tabs block, outside Material's
+    content grid, so sections can run edge to edge. Styles: docs/assets/site/landing.css -#}
+{% extends "main.html" %}
+
+{% set gh = "https://github.com/rossedman/tfmetrics" %}
+{% set install = "go install github.com/rossedman/tfmetrics@latest" %}
+
+{% block tabs %}
+{{ super() }}
+<div class="lp">
+
+  <section class="lp-hero">
+    <div class="lp-grid" aria-hidden="true"></div>
+    <div class="lp-wrap lp-hero__inner">
+      <div>
+        <img class="lp-hero__logo" src="{{ 'assets/site/logo.svg' | url }}" alt="">
+        <p class="lp-kicker">rossedman/tfmetrics</p>
+        <h1 class="lp-title">Terraform metrics<br><span>from static parsing.</span></h1>
+        <p class="lp-tagline">Scan every Terraform repo in your GitHub org and emit one consistent set of metrics: inventory, version drift, module adoption and hygiene. <b>No init, no plan, no state.</b></p>
+        <div class="lp-install">
+          <span class="lp-install__prompt">$</span>
+          <code>{{ install }}</code>
+          <button class="lp-copy" data-copy="{{ install }}" aria-label="Copy install command">
+            {% include ".icons/material/content-copy.svg" %}
+          </button>
+        </div>
+        <div class="lp-cta">
+          <a class="lp-btn lp-btn--primary" href="{{ 'getting-started/' | url }}">Get started {% include ".icons/material/arrow-right.svg" %}</a>
+          <a class="lp-btn" href="{{ 'how-it-works/' | url }}">{% include ".icons/material/cog-outline.svg" %} How it works</a>
+        </div>
+      </div>
+
+      <div class="lp-term" aria-label="A terminal running tfmetrics">
+        <div class="lp-term__bar"><i></i><i></i><i></i><span>~/infra</span></div>
+        <div class="lp-term__body" data-typing>
+          <div><span class="p">$</span> <span class="c" data-type>tfmetrics scan ./infra</span></div>
+          <div>scanned acme/infra: 5 modules -&gt; facts/acme__infra.json</div>
+          <div><span class="p">$</span> <span class="c" data-type>tfmetrics explain facts/ | grep -A2 hygiene</span></div>
+          <div>hygiene score <span class="w">65.3</span> / 100</div>
+          <div>  Remote module calls pinned           5/6  weight 30</div>
+          <div>  Variables and outputs described      4/8  weight 15</div>
+          <div><span class="p">$</span> <span class="c" data-type>tfmetrics aggregate facts/ --offline --sink openmetrics</span></div>
+          <div><span class="ok">aggregated 1 repos (1 with Terraform) into 36 series</span></div>
+          <div><span class="p">$</span> <span class="lp-caret"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="lp-wrap lp-stats">
+      <li><b>17</b><span>gauges in the metrics catalog</span></li>
+      <li><b>6</b><span>sinks, from Prometheus to Parquet</span></li>
+      <li><b>0.5 s</b><span>to scan 200 repos on 4 cores</span></li>
+      <li><b>0</b><span>terraform runs, state reads or cloud APIs</span></li>
+    </ul>
+  </section>
+
+  <section class="lp-section" id="problem">
+    <div class="lp-wrap lp-split">
+      <div>
+        <p class="lp-eyebrow">The problem</p>
+        <h2>Terraform sprawl.<br><span>Nobody has counted it.</span></h2>
+        <p class="lp-lede">Which version of the EKS module are three hundred repos on? Which roots have no <code>required_version</code>? Answering means running <code>terraform init</code> everywhere or grepping and hoping. tfmetrics parses the HCL on disk and counts, the same way for every repo.</p>
+        <ul class="lp-points">
+          <li>{% include ".icons/material/check-decagram-outline.svg" %} Static: no init, plan, state or cloud credentials</li>
+          <li>{% include ".icons/material/check-decagram-outline.svg" %} One facts file per repo, cached by commit SHA</li>
+          <li>{% include ".icons/material/check-decagram-outline.svg" %} A broken file is a diagnostic, never a crash</li>
+        </ul>
+      </div>
+      <div class="lp-stack">
+        <article class="lp-panel" aria-label="A hygiene report for one repo">
+          <div class="lp-panel__head">
+            <span class="lp-panel__id">acme/infra</span><span class="lp-pill lp-pill--warn">65.3 / 100</span>
+            <span class="lp-panel__meta">@ 1c35bc0af618</span>
+          </div>
+          <h3>Hygiene score</h3>
+          <div class="lp-panel__sub">5 modules (2 root, 3 child) · 8 module calls · 1 parse error</div>
+          <div class="lp-quote">github.com/acme/tf-iam is called with no ref<small>live/prod · remote module call, pinned: none</small></div>
+          <div class="lp-well">Remote module calls pinned           5/6  weight 30
+Variables and outputs described      4/8  weight 15
+Providers with a version constraint  2/5  weight 15
+Roots with required_version          1/2  weight 15
+Variables with a type                3/4  weight 15
+Modules that parse cleanly           4/5  weight 10</div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-section lp-section--alt">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">Core ideas</p>
+      <h2>Three ideas.<br><span>Everything else follows.</span></h2>
+      <p class="lp-lede lp-lede--center">tfmetrics sorts directories into roots and children, records what it finds as plain JSON, and scores the result against checks you can reweight.</p>
+      <div class="lp-pillars">
+        <article class="lp-pillar" style="--accent: var(--brand)">
+          <h3>Roots and children</h3><div class="when">Every directory with Terraform in it</div>
+          <p>A root has a backend, a cloud block or a configured provider. Everything else is a child module.</p>
+          <pre><code>live/prod      root   s3
+live/staging   root   cloud
+modules/vpc    child  -</code></pre>
+        </article>
+        <article class="lp-pillar" style="--accent: var(--info)">
+          <h3>Facts, not scans</h3><div class="when">The contract between scan and aggregate</div>
+          <p>Each repo becomes one JSON file. Re-aggregate it with new weights or labels without cloning again.</p>
+          <pre><code>"address": "github.com/acme/tf-iam",
+"source_kind": "git",
+"version": "",
+"pinned": "none"</code></pre>
+        </article>
+        <article class="lp-pillar" style="--accent: var(--warn)">
+          <h3>Hygiene score</h3><div class="when">0 to 100, from six weighted checks</div>
+          <p>Pinned modules weigh most. Weights are yours to change, and a check with nothing to check passes.</p>
+          <pre><code>pinned                30 x 5/6
+described             15 x 4/8
+provider_constraints  15 x 2/5
+required_version      15 x 1/2
+typed_vars            15 x 3/4
+parse_clean           10 x 4/5
+                      =&gt; 65.3</code></pre>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">Why tfmetrics</p>
+      <h2>Built for fleets.<br><span>Small enough to trust.</span></h2>
+      <div class="lp-features">
+        {% for icon, title, body in [
+          ("source-repository-multiple", "Whole orgs, filtered", "Per-org name, topic and custom-property filters with excludes, or --local-dir for clones you already have."),
+          ("cached", "Rescans only what changed", "Facts are cached by commit SHA. A repo whose HEAD matches is not even cloned."),
+          ("shield-lock-outline", "Static by design", "Never runs terraform, never reads state, never evaluates an expression. It needs a GitHub token and nothing else."),
+          ("chart-line", "Drift you can alert on", "tf_module_versions_behind counts the newer major.minor release lines a pinned module has missed."),
+          ("database-export-outline", "Six sinks", "JSON, OpenMetrics file or Pushgateway, OTLP over gRPC, CSV, Parquet and a Markdown report for PRs."),
+          ("alert-circle-check-outline", "Parse errors are data", "A file that will not parse becomes a diagnostic and a tf_parse_errors count. The scan goes on."),
+        ] %}
+        <article class="lp-card">
+          <div class="lp-icon">{% include ".icons/material/" ~ icon ~ ".svg" %}</div>
+          <h3>{{ title }}</h3>
+          <p>{{ body }}</p>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-section lp-section--alt" id="quick-start">
+    <div class="lp-wrap lp-split">
+      <div>
+        <p class="lp-eyebrow">Quick start</p>
+        <h2>From install to metrics<br><span>in four commands.</span></h2>
+        <p class="lp-lede">You need Go and a directory with Terraform in it. No token, no cloud account.</p>
+        <a class="lp-btn" href="{{ 'getting-started/' | url }}">{% include ".icons/material/book-open-page-variant-outline.svg" %} Full getting-started guide</a>
+      </div>
+      <ol class="lp-steps">
+        <li>
+          <h4>Install</h4>
+          <pre class="lp-code"><button class="lp-copy" aria-label="Copy">{% include ".icons/material/content-copy.svg" %}</button><code><span class="p">$</span> {{ install }}</code></pre>
+        </li>
+        <li>
+          <h4>Scan a repo</h4>
+          <p>Writes one facts file.</p>
+          <pre class="lp-code"><button class="lp-copy" aria-label="Copy">{% include ".icons/material/content-copy.svg" %}</button><code><span class="p">$</span> tfmetrics scan ./infra</code></pre>
+        </li>
+        <li>
+          <h4>Read the report</h4>
+          <p>Inventory, score, pinning and diagnostics.</p>
+          <pre class="lp-code"><button class="lp-copy" aria-label="Copy">{% include ".icons/material/content-copy.svg" %}</button><code><span class="p">$</span> tfmetrics explain facts/</code></pre>
+        </li>
+        <li>
+          <h4>Write metrics</h4>
+          <p>Drop <code>--offline</code> to add version drift.</p>
+          <pre class="lp-code"><button class="lp-copy" aria-label="Copy">{% include ".icons/material/content-copy.svg" %}</button><code><span class="p">$</span> tfmetrics aggregate facts/ --offline --sink openmetrics</code></pre>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">How it works</p>
+      <h2>Five stages.<br><span>One file in the middle.</span></h2>
+      <figure class="lp-figure">
+        <a href="{{ 'assets/how-it-works.png' | url }}"><img width="2560" height="1440" src="{{ 'assets/how-it-works.png' | url }}" alt="The tfmetrics pipeline: discover, classify, parse and extract write one facts JSON file per repo; aggregate computes 17 gauges and a hygiene score and writes them to json, openmetrics, otlp, parquet, csv and markdown sinks." loading="lazy"></a>
+        <figcaption>Tap to open the full-size diagram</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="lp-section lp-section--alt">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">Documentation</p>
+      <h2>Go deeper.</h2>
+      <div class="lp-docs">
+        {% for path, name, blurb in [
+          ("getting-started/", "Getting started", "Install, verify and first run"),
+          ("configuration/", "Configuration", "Every tfmetrics.yaml key"),
+          ("how-it-works/", "How it works", "The pipeline, stage by stage"),
+          ("guides/nightly-org-scan/", "Nightly org scan", "A GitHub Actions workflow"),
+          ("guides/pr-check/", "PR check", "A report on every pull request"),
+          ("guides/dashboards/", "Dashboards", "Prometheus, OTLP and Parquet trends"),
+          ("reference/metrics/", "Metrics catalog", "All 17 gauges and the score"),
+          ("reference/commands/tfmetrics/", "Commands", "Generated CLI reference"),
+        ] %}
+        <a class="lp-doc" href="{{ path | url }}">
+          <b>{{ name }}</b><span>{{ blurb }}</span>
+          {% include ".icons/material/arrow-right.svg" %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-final">
+    <div class="lp-grid" aria-hidden="true"></div>
+    <div class="lp-wrap">
+      <img class="lp-final__logo" src="{{ 'assets/site/logo.svg' | url }}" alt="">
+      <h2>Count your Terraform.</h2>
+      <p class="lp-lede lp-lede--center">Free and open source under the Apache 2.0 license.</p>
+      <div class="lp-cta lp-cta--center">
+        <a class="lp-btn lp-btn--primary" href="{{ 'getting-started/' | url }}">Get started {% include ".icons/material/arrow-right.svg" %}</a>
+        <a class="lp-btn" href="{{ gh }}">{% include ".icons/material/source-repository.svg" %} View on GitHub</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block content %}{% endblock %}

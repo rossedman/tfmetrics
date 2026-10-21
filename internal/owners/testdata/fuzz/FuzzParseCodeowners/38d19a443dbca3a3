@@ -1,0 +1,2 @@
+go test fuzz v1
+string("* @acme/platform @acme/platform\n/modules\n/modules/ @acme/networking\n")
