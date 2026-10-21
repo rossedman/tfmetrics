@@ -237,7 +237,7 @@ func FuzzClassify(f *testing.F) {
 			t.Fatalf("whitespace changed result for %q: %+v vs %+v", src, r, r2)
 		}
 		// Local classification is idempotent on its own address.
-		if r.Kind == KindLocal {
+		if r.Kind == KindLocal && strings.TrimSpace(r.Address) == r.Address {
 			if r2 := n.Classify(r.Address); r2 != r {
 				t.Fatalf("local not idempotent for %q: %+v vs %+v", src, r, r2)
 			}

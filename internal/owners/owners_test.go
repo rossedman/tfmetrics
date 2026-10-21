@@ -38,6 +38,7 @@ func TestFromCodeowners(t *testing.T) {
 		{"emails kept", "CODEOWNERS", "* dev@acme.io @team\n", []string{"dev@acme.io", "team"}},
 		{"owners sorted", "CODEOWNERS", "* @zed @amy @mid\n", []string{"amy", "mid", "zed"}},
 		{"pattern without owners ignored", "CODEOWNERS", "/modules/\n", []string{}},
+		{"duplicate owners in one rule", "CODEOWNERS", "* @a @a @b\n", []string{"a", "b"}},
 		{"double @ stripped", "CODEOWNERS", "* @@a\n", []string{"a"}},
 		{"bare @ dropped", "CODEOWNERS", "* @ @a\n", []string{"a"}},
 		{"empty file", "CODEOWNERS", "", []string{}},

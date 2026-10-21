@@ -173,12 +173,7 @@ func Compute(ctx context.Context, results []facts.ScanResult, opts Options) Metr
 	if len(opts.DropLabels) > 0 {
 		m.Series = Rollup(m.Series, opts.DropLabels)
 	}
-	sort.SliceStable(m.Series, func(i, j int) bool {
-		if m.Series[i].Name != m.Series[j].Name {
-			return m.Series[i].Name < m.Series[j].Name
-		}
-		return seriesKey("", m.Series[i].Labels) < seriesKey("", m.Series[j].Labels)
-	})
+	sortSeries(m.Series)
 	if m.Series == nil {
 		m.Series = []Series{}
 	}
@@ -341,4 +336,20 @@ func Rollup(in []Series, drop []string) []Series {
 		}
 	}
 	return b.series
+}
+
+// sortSeries orders series by name, then labels, computing each sort key once.
+func sortSeries(series []Series) {
+	type keyed struct {
+		key string
+		s   Series
+	}
+	ks := make([]keyed, len(series))
+	for i, s := range series {
+		ks[i] = keyed{seriesKey(s.Name, s.Labels), s}
+	}
+	sort.SliceStable(ks, func(i, j int) bool { return ks[i].key < ks[j].key })
+	for i := range ks {
+		series[i] = ks[i].s
+	}
 }
