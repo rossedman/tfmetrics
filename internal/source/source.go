@@ -222,7 +222,7 @@ func stripQuery(s string) string {
 
 // cleanLocal tidies a local path without resolving it.
 func cleanLocal(s string) string {
-	return strings.TrimSuffix(s, "/")
+	return strings.TrimRight(s, "/")
 }
 
 // Pinning returns how tightly a call is pinned: exact, range or none. Local

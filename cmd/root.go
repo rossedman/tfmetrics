@@ -12,12 +12,13 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
+	"github.com/rossedman/tfmetrics/internal/app"
 	"github.com/rossedman/tfmetrics/internal/sink"
 )
 
 var (
 	cfgFile string
-	v       = viper.New()
+	v       = app.NewViper()
 )
 
 var rootCmd = &cobra.Command{
@@ -51,9 +52,6 @@ func init() {
 
 // initConfig reads the config file and environment into v.
 func initConfig() error {
-	v.SetEnvPrefix("TFMETRICS")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-	v.AutomaticEnv()
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
 	} else {

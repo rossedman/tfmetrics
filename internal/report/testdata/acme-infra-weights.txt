@@ -1,0 +1,37 @@
+acme/infra @ 0123456789ab
+owners: acme/platform
+
+modules      6 (2 root, 4 child)
+resources    8 declared, 1 data sources
+module calls 9 (1 remote unpinned)
+lines        198
+parse errors 1
+
+hygiene score 83.3 / 100
+  Modules that parse cleanly           5/6  weight 1
+  Remote module calls pinned           5/6  weight 1
+  Variables and outputs described      4/8  weight 0
+  Providers with a version constraint  2/5  weight 0
+  Roots with required_version          1/2  weight 0
+  Variables with a type                3/4  weight 0
+
+modules
+  PATH            KIND   RESOURCES  CALLS  BACKEND  REQUIRED_VERSION
+  broken          child  1          0      -        -
+  examples/basic  child  0          1      -        -
+  live/prod       root   3          6      s3       >= 1.6.0
+  live/staging    root   1          2      cloud    -
+  modules/legacy  child  1          0      -        -
+  modules/vpc     child  2          0      -        >= 1.5
+
+remote module calls
+  ADDRESS                                                    KIND              VERSION  PINNED  IN
+  app.terraform.io/acme/sqs/aws                              private_registry  2.1.0    exact   live/prod
+  github.com/acme/tf-dns                                     git               v1.4.0   exact   live/prod
+  github.com/acme/tf-iam                                     git               -        none    live/prod
+  registry.terraform.io/terraform-aws-modules/eks/aws        registry          19.21.0  exact   live/prod
+  registry.terraform.io/terraform-aws-modules/eks/aws        registry          17.24.0  exact   live/staging
+  registry.terraform.io/terraform-aws-modules/s3-bucket/aws  registry          ~> 3.15  range   live/prod
+
+diagnostics
+  error broken/main.tf:1: Unclosed configuration block

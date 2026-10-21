@@ -27,7 +27,7 @@ per-repo PR check works: tfmetrics scan . --sink markdown`,
   tfmetrics scan . --sink markdown`,
 	Args: cobra.MinimumNArgs(1),
 	PreRunE: func(cmd *cobra.Command, _ []string) error {
-		return bindFlags(cmd, map[string]string{"out": "out", "ref": "scan.ref"})
+		return bindFlags(cmd, map[string]string{"out": "out", "ref": "scan" + app.KeyDelimiter + "ref"})
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()

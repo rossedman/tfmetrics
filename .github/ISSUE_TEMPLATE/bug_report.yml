@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in tfmetrics does not work as documented.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For security problems, do not file an issue: use [private vulnerability reporting](https://github.com/rossedman/tfmetrics/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: tfmetrics version
+      description: Output of `tfmetrics version`.
+      placeholder: "tfmetrics v0.1.0 (commit abc1234, built 2026-10-01T00:00:00Z)"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and architecture, how you installed tfmetrics, and the command you ran (`scan`, `org`, `aggregate`, `explain`).
+      placeholder: "Ubuntu 24.04 amd64, go install, tfmetrics org --org acme"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: A minimal Terraform snippet or facts file helps most.
+      placeholder: |
+        1. Create a repo containing ...
+        2. Run `tfmetrics scan .`
+        3. See the error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and output
+      description: Paste command output. Remove tokens and private repo names.
+      render: shell
+    validations:
+      required: false

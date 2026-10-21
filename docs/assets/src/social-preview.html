@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- KIT: replace the name, promise and terminal lines with this project's own,
+     and the glow rgba() values with its brand colors. Terminal lines are real
+     commands and real output, copied from the tool. Delete this comment. -->
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="brand.css">
+<style>
+  body {
+    background:
+      radial-gradient(760px 420px at 50% 34%, rgba(239,125,82,0.18), transparent 70%),
+      radial-gradient(600px 360px at 90% 110%, rgba(143,209,168,0.10), transparent 70%),
+      var(--ink);
+  }
+  .grid { mask-image: radial-gradient(ellipse 70% 70% at 50% 40%, #000 20%, transparent 75%); }
+  .wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 64px; }
+  .logo { width: 150px; height: 150px; filter: drop-shadow(0 18px 30px rgba(0,0,0,0.5)); }
+  .kicker { margin-top: 26px; font-size: 22px; color: var(--dim); }
+  h1 { margin-top: 10px; font-size: 76px; font-weight: 800; letter-spacing: -3px; line-height: 1.02; }
+  h1 span { color: var(--brand); }
+  p { margin-top: 22px; font-size: 26px; color: var(--mist); }
+  p b { color: var(--cream); font-weight: 600; }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 10px; background: linear-gradient(90deg, var(--brand-2), var(--brand), #c0592f); }
+</style></head>
+<body>
+  <div class="grid"></div>
+  <div class="wrap">
+    <img class="logo" src="../site/logo.svg" alt="">
+    <div class="kicker mono">owner/project</div>
+    <h1>Claude Code plugins<br><span>for open source.</span></h1>
+    <p>Skills, hooks and evals, <b>from first commit to a signed release.</b></p>
+  </div>
+  <div class="bar"></div>
+</body></html>

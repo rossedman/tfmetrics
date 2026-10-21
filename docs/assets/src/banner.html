@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- KIT: replace the name, promise and terminal lines with this project's own,
+     and the glow rgba() values with its brand colors. Terminal lines are real
+     commands and real output, copied from the tool. Delete this comment. -->
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="brand.css">
+<style>
+  body {
+    background:
+      radial-gradient(900px 440px at 14% 30%, rgba(239,125,82,0.16), transparent 70%),
+      radial-gradient(700px 420px at 95% 115%, rgba(143,209,168,0.09), transparent 70%),
+      var(--ink);
+  }
+  .grid { mask-image: linear-gradient(90deg, rgba(0,0,0,0.9), rgba(0,0,0,0.15)); }
+  .wrap { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 60px 0 64px; gap: 40px; }
+  .logo { width: 150px; height: 150px; flex: none; filter: drop-shadow(0 18px 30px rgba(0,0,0,0.5)); }
+  .text { flex: 1; min-width: 0; }
+  .kicker { font-size: 20px; color: var(--dim); margin-bottom: 10px; }
+  h1 { font-size: 52px; font-weight: 800; letter-spacing: -2px; line-height: 1.04; white-space: nowrap; }
+  h1 span { color: var(--brand); }
+  p { margin-top: 18px; font-size: 22px; line-height: 1.4; color: var(--mist); }
+  p b { color: var(--cream); font-weight: 600; }
+  .term { width: 430px; flex: none; }
+  .term .body { font-size: 14px; }
+</style></head>
+<body>
+  <div class="grid"></div>
+  <div class="wrap">
+    <img class="logo" src="../site/logo.svg" alt="">
+    <div class="text">
+      <div class="kicker mono">owner/project</div>
+      <h1>Claude Code plugins<br><span>for open source.</span></h1>
+      <p>Skills, hooks and evals, <b>from first commit<br>to a signed release.</b></p>
+    </div>
+    <div class="term mono">
+      <div class="bar"><i></i><i></i><i></i><span>claude</span></div>
+      <div class="body"><span class="p">&gt;</span> <span class="c">/plugin install go-bootstrap@rossedman</span>
+<span class="d">●</span> <span class="c">Edit</span> internal/list/list.go
+<span class="d">  └</span> <span class="w">hook</span> gofmt, golangci-lint   <span class="ok">ok</span>
+<span class="d">●</span> <span class="c">Bash</span> git push
+<span class="d">  └</span> <span class="e">Blocked git push: tests are failing.</span>
+<span class="d">●</span> <span class="c">Bash</span> go test ./...          <span class="ok">ok</span>
+<span class="d">●</span> <span class="c">Bash</span> git push               <span class="ok">ok</span></div>
+    </div>
+  </div>
+</body></html>

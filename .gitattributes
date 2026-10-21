@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+# Generated command reference is collapsed in diffs.
+docs/reference/commands/*.md linguist-generated=true
+go.sum linguist-generated=true
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.parquet binary

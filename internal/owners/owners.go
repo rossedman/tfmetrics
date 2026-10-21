@@ -69,7 +69,7 @@ func parseCodeowners(sc *bufio.Scanner) []string {
 		}
 		var owners []string
 		for _, o := range fields[1:] {
-			o = strings.TrimPrefix(o, "@")
+			o = strings.TrimLeft(o, "@")
 			if o != "" {
 				owners = append(owners, o)
 				all[o] = true

@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest a new metric, sink, filter or command option.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to learn about your Terraform estate that tfmetrics cannot tell you today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: The metric, flag or behavior you would like, ideally with example output.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, or other tools you looked at.
+    validations:
+      required: false

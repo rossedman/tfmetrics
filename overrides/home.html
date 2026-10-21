@@ -1,0 +1,208 @@
+{#- KIT: the landing page skeleton. Copy to overrides/home.html, then write every
+    section for this project: real numbers, real commands, real output. Drop
+    sections that have nothing true to say, and reorder to tell the story.
+    Delete every KIT comment before finishing (grep -n KIT overrides/home.html).
+
+    Everything renders in the tabs block, outside Material's content grid, so
+    sections can run edge to edge. Styles: docs/assets/site/landing.css -#}
+{% extends "main.html" %}
+
+{% set gh = "https://github.com/OWNER/REPO" %}
+{% set install = "INSTALL COMMAND" %}
+
+{% block tabs %}
+{{ super() }}
+<div class="lp">
+
+  <!-- Hero: who it's for and what it does in one sentence, the install
+       command, two calls to action, and the tool doing its job. -->
+  <section class="lp-hero">
+    <div class="lp-grid" aria-hidden="true"></div>
+    <div class="lp-wrap lp-hero__inner">
+      <div>
+        <img class="lp-hero__logo" src="{{ 'assets/site/logo.svg' | url }}" alt="">
+        {#- KIT: either the name as the title (short names: "s<span>miner</span>")
+            or a kicker with the name and a two-line promise as the title. Each
+            title line must fit on one line at desktop width. -#}
+        <p class="lp-kicker">OWNER/REPO</p>
+        <h1 class="lp-title">FIRST LINE<br><span>SECOND LINE.</span></h1>
+        <p class="lp-tagline">WHAT IT DOES, FOR WHOM. <b>THE PAYOFF.</b></p>
+        <div class="lp-install">
+          <span class="lp-install__prompt">$</span>
+          <code>{{ install }}</code>
+          <button class="lp-copy" data-copy="{{ install }}" aria-label="Copy install command">
+            {% include ".icons/material/content-copy.svg" %}
+          </button>
+        </div>
+        <div class="lp-cta">
+          <a class="lp-btn lp-btn--primary" href="{{ 'getting-started/' | url }}">Get started {% include ".icons/material/arrow-right.svg" %}</a>
+          <a class="lp-btn" href="{{ 'how-it-works/' | url }}">{% include ".icons/material/cog-outline.svg" %} How it works</a>
+        </div>
+      </div>
+
+      {#- KIT: a real session. Lines with data-type are typed out on load; the
+          rest appear one by one. Classes: p prompt, c command, ok success,
+          d dim, e error, w warning, i info. -#}
+      <div class="lp-term" aria-label="A terminal running PROJECT">
+        <div class="lp-term__bar"><i></i><i></i><i></i><span>~ zsh</span></div>
+        <div class="lp-term__body" data-typing>
+          <div><span class="p">$</span> <span class="c" data-type>COMMAND</span></div>
+          <div><span class="d">·</span> REAL OUTPUT LINE</div>
+          <div><span class="p">$</span> <span class="c" data-type>NEXT COMMAND</span><span class="lp-caret"></span></div>
+        </div>
+      </div>
+    </div>
+
+    {#- KIT: four true, specific numbers (speed, counts, sizes, guarantees). -#}
+    <ul class="lp-wrap lp-stats">
+      <li><b>N</b><span>WHAT IT MEASURES</span></li>
+      <li><b>N</b><span>WHAT IT MEASURES</span></li>
+      <li><b>N</b><span>WHAT IT MEASURES</span></li>
+      <li><b>N</b><span>WHAT IT MEASURES</span></li>
+    </ul>
+  </section>
+
+  <!-- The problem, beside a panel of real output that shows the answer. -->
+  <section class="lp-section" id="problem">
+    <div class="lp-wrap lp-split">
+      <div>
+        <p class="lp-eyebrow">The problem</p>
+        <h2>STATEMENT.<br><span>TWIST.</span></h2>
+        <p class="lp-lede">THE PAIN, CONCRETELY. THEN WHAT THIS DOES ABOUT IT.</p>
+        <ul class="lp-points">
+          <li>{% include ".icons/material/check-decagram-outline.svg" %} SPECIFIC PROOF POINT</li>
+          <li>{% include ".icons/material/check-decagram-outline.svg" %} SPECIFIC PROOF POINT</li>
+          <li>{% include ".icons/material/check-decagram-outline.svg" %} SPECIFIC PROOF POINT</li>
+        </ul>
+      </div>
+      <div class="lp-stack">
+        <article class="lp-panel" aria-label="An example of the output">
+          <div class="lp-panel__head">
+            <span class="lp-panel__id">ID</span><span class="lp-pill lp-pill--ok">LABEL</span>
+            <span class="lp-panel__meta">META</span>
+          </div>
+          <h3>A REAL RESULT</h3>
+          <div class="lp-panel__sub">DETAILS</div>
+          <div class="lp-quote lp-quote--ok">QUOTED OUTPUT<small>WHERE IT CAME FROM</small></div>
+          <div class="lp-well">CODE OR LOG EXCERPT</div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Three pillars: the concepts a reader needs, each with a real snippet.
+       Set --accent per pillar to one of the semantic colors. -->
+  <section class="lp-section lp-section--alt">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">EYEBROW</p>
+      <h2>STATEMENT.<br><span>TWIST.</span></h2>
+      <p class="lp-lede lp-lede--center">ONE PARAGRAPH, AT MOST THREE SENTENCES.</p>
+      <div class="lp-pillars">
+        <article class="lp-pillar" style="--accent: var(--brand)">
+          <h3>CONCEPT</h3><div class="when">WHEN IT APPLIES</div>
+          <p>WHAT IT IS.</p>
+          <pre><code>REAL SNIPPET</code></pre>
+        </article>
+        <article class="lp-pillar" style="--accent: var(--warn)">
+          <h3>CONCEPT</h3><div class="when">WHEN IT APPLIES</div>
+          <p>WHAT IT IS.</p>
+          <pre><code>REAL SNIPPET</code></pre>
+        </article>
+        <article class="lp-pillar" style="--accent: var(--info)">
+          <h3>CONCEPT</h3><div class="when">WHEN IT APPLIES</div>
+          <p>WHAT IT IS.</p>
+          <pre><code>REAL SNIPPET</code></pre>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features: six cards (a full grid, no orphans), each a claim with evidence. -->
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">Why PROJECT</p>
+      <h2>STATEMENT.<br><span>TWIST.</span></h2>
+      <div class="lp-features">
+        {% for icon, title, body in [
+          ("lightning-bolt", "CLAIM", "EVIDENCE: A NUMBER, A FLAG, A GUARANTEE."),
+        ] %}
+        <article class="lp-card">
+          <div class="lp-icon">{% include ".icons/material/" ~ icon ~ ".svg" %}</div>
+          <h3>{{ title }}</h3>
+          <p>{{ body }}</p>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick start: numbered steps with copyable commands. -->
+  <section class="lp-section lp-section--alt" id="quick-start">
+    <div class="lp-wrap lp-split">
+      <div>
+        <p class="lp-eyebrow">Quick start</p>
+        <h2>STATEMENT<br><span>IN N COMMANDS.</span></h2>
+        <p class="lp-lede">WHAT YOU NEED FIRST, IF ANYTHING.</p>
+        <a class="lp-btn" href="{{ 'getting-started/' | url }}">{% include ".icons/material/book-open-page-variant-outline.svg" %} Full getting-started guide</a>
+      </div>
+      <ol class="lp-steps">
+        <li>
+          <h4>Install</h4>
+          <pre class="lp-code"><button class="lp-copy" aria-label="Copy">{% include ".icons/material/content-copy.svg" %}</button><code><span class="p">$</span> {{ install }}</code></pre>
+        </li>
+        <li>
+          <h4>STEP</h4>
+          <p>ONE LINE OF CONTEXT.</p>
+          <pre class="lp-code"><button class="lp-copy" aria-label="Copy">{% include ".icons/material/content-copy.svg" %}</button><code><span class="p">$</span> COMMAND</code></pre>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- How it works: a diagram rendered from docs/assets/src (branding kit). -->
+  <section class="lp-section">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">How it works</p>
+      <h2>STATEMENT.<br><span>TWIST.</span></h2>
+      <figure class="lp-figure">
+        <a href="{{ 'assets/how-it-works.png' | url }}"><img width="2560" height="1440" src="{{ 'assets/how-it-works.png' | url }}" alt="DESCRIBE THE DIAGRAM IN FULL" loading="lazy"></a>
+        <figcaption>Tap to open the full-size diagram</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- Docs grid: four or eight links (full rows). -->
+  <section class="lp-section lp-section--alt">
+    <div class="lp-wrap">
+      <p class="lp-eyebrow">Documentation</p>
+      <h2>Go deeper.</h2>
+      <div class="lp-docs">
+        {% for path, name, blurb in [
+          ("getting-started/", "Getting started", "Install and first run"),
+        ] %}
+        <a class="lp-doc" href="{{ path | url }}">
+          <b>{{ name }}</b><span>{{ blurb }}</span>
+          {% include ".icons/material/arrow-right.svg" %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- Closing call to action. -->
+  <section class="lp-final">
+    <div class="lp-grid" aria-hidden="true"></div>
+    <div class="lp-wrap">
+      <img class="lp-final__logo" src="{{ 'assets/site/logo.svg' | url }}" alt="">
+      <h2>A SHORT IMPERATIVE.</h2>
+      <p class="lp-lede lp-lede--center">Free and open source under the LICENSE license.</p>
+      <div class="lp-cta lp-cta--center">
+        <a class="lp-btn lp-btn--primary" href="{{ 'getting-started/' | url }}">Get started {% include ".icons/material/arrow-right.svg" %}</a>
+        <a class="lp-btn" href="{{ gh }}">{% include ".icons/material/source-repository.svg" %} View on GitHub</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block content %}{% endblock %}

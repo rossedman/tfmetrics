@@ -43,9 +43,17 @@ func (g Git) run(ctx context.Context, rawURL string, args ...string) ([]byte, er
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("git %s: %w: %s", subcommand(args), err, strings.TrimSpace(stderr.String()))
 	}
 	return out, nil
+}
+
+// subcommand returns the git subcommand in args, skipping a leading "-C dir".
+func subcommand(args []string) string {
+	if len(args) > 2 && args[0] == "-C" {
+		return args[2]
+	}
+	return args[0]
 }
 
 // RemoteHead returns the commit SHA that ref (or HEAD when empty) points to on

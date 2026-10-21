@@ -21,6 +21,22 @@ import (
 	"github.com/rossedman/tfmetrics/internal/source"
 )
 
+// KeyDelimiter separates nested config keys in the viper instance from
+// NewViper. It is not ".", so map keys that contain dots (module alias sources
+// such as github.com/acme/old) survive loading.
+const KeyDelimiter = "::"
+
+// NewViper returns a viper instance for tfmetrics config: nested keys are
+// joined with KeyDelimiter and environment variables are TFMETRICS_ plus the
+// key with delimiters and dashes as underscores.
+func NewViper() *viper.Viper {
+	v := viper.NewWithOptions(viper.KeyDelimiter(KeyDelimiter))
+	v.SetEnvPrefix("TFMETRICS")
+	v.SetEnvKeyReplacer(strings.NewReplacer(KeyDelimiter, "_", "-", "_"))
+	v.AutomaticEnv()
+	return v
+}
+
 // LoadConfig decodes the merged config (file, env, flags) from v and applies
 // defaults.
 func LoadConfig(v *viper.Viper) (config.Config, error) {

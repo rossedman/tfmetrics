@@ -115,6 +115,9 @@ func RepoName(ctx context.Context, dir string) string {
 // RepoFromURL extracts org/name from a git remote URL.
 func RepoFromURL(u string) string {
 	u = strings.TrimSuffix(strings.TrimSuffix(u, "/"), ".git")
+	if strings.HasPrefix(u, "/") || strings.HasPrefix(u, ".") {
+		return "" // a filesystem path, not a remote with an org
+	}
 	if i := strings.Index(u, "://"); i >= 0 {
 		u = u[i+3:]
 	} else if at := strings.Index(u, "@"); at >= 0 {

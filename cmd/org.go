@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -39,9 +40,9 @@ calling GitHub.`,
 	PreRunE: func(cmd *cobra.Command, _ []string) error {
 		return bindFlags(cmd, map[string]string{
 			"out":         "out",
-			"ref":         "scan.ref",
-			"concurrency": "scan.concurrency",
-			"cache-dir":   "scan.cache_dir",
+			"ref":         "scan" + app.KeyDelimiter + "ref",
+			"concurrency": "scan" + app.KeyDelimiter + "concurrency",
+			"cache-dir":   "scan" + app.KeyDelimiter + "cache_dir",
 		})
 	},
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -82,6 +83,7 @@ calling GitHub.`,
 			c.Dir = ""
 		}
 		stderr := cmd.ErrOrStderr()
+		var progressMu sync.Mutex // the pipeline calls Progress from many goroutines
 		sum := pipeline.Run(ctx, repos, pipeline.Options{
 			OutDir:      out,
 			Concurrency: cfg.Scan.Concurrency,
@@ -91,6 +93,8 @@ calling GitHub.`,
 			Scan:        app.ScanOptions(cfg),
 			Settings:    app.Settings(cfg, version),
 			Progress: func(repo string, cached bool, err error) {
+				progressMu.Lock()
+				defer progressMu.Unlock()
 				switch {
 				case err != nil:
 					fmt.Fprintf(stderr, "error   %s: %v\n", repo, err)
