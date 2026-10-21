@@ -18,6 +18,7 @@ func TestClassify(t *testing.T) {
 		{"local sibling", "./modules/vpc", Ref{Kind: KindLocal, Address: "./modules/vpc"}},
 		{"local parent", "../../modules/vpc", Ref{Kind: KindLocal, Address: "../../modules/vpc"}},
 		{"local trailing slash", "./vpc/", Ref{Kind: KindLocal, Address: "./vpc"}},
+		{"local multiple trailing slashes", ".//", Ref{Kind: KindLocal, Address: "."}},
 		{"local dot", ".", Ref{Kind: KindLocal, Address: "."}},
 		{"local dotdot", "..", Ref{Kind: KindLocal, Address: ".."}},
 		{"public registry", "terraform-aws-modules/vpc/aws", Ref{Kind: KindRegistry, Address: "registry.terraform.io/terraform-aws-modules/vpc/aws"}},

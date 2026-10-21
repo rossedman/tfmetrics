@@ -12,7 +12,7 @@
   .cmd b { color: var(--brand-2); font-weight: 500; }
   .cmd::after { content: ""; flex: 1; height: 1px; background: var(--ink-3); }
 
-  .stage { position: absolute; width: 276px; height: 150px; border-radius: 16px; background: var(--ink-2);
+  .stage { position: absolute; width: 276px; height: 172px; border-radius: 16px; background: var(--ink-2);
            border: 1px solid var(--ink-3); padding: 18px 20px 0; }
   .stage .n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800;
               color: var(--ink); background: var(--brand); }
@@ -93,8 +93,6 @@
     </div>
   </div>
 
-  <div class="cmd mono" style="left:470px; width:758px; top:268px"><span><b>tfmetrics aggregate</b></span></div>
-
   <div class="notes">
     <div class="note"><div class="t"><i class="i-brand">∅</i>Static by design</div>
       <p>No <code>terraform init</code>, plan or state, and no cloud APIs. Only the HCL on disk is read, and <code>count</code>, <code>for_each</code> and variables stay as written.</p></div>
@@ -110,10 +108,10 @@
       <marker id="ab" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#34d3e6"/></marker>
     </defs>
     <g stroke="#86a0a8" stroke-width="2" fill="none" marker-end="url(#a)">
-      <path d="M330 185 L349 185"/><path d="M630 185 L649 185"/><path d="M930 185 L949 185"/>
+      <path d="M330 196 L349 196"/><path d="M630 196 L649 196"/><path d="M930 196 L949 196"/>
     </g>
     <!-- extract down into the facts file -->
-    <path d="M1090 262 L1090 290 L238 290 L238 305" stroke="#34d3e6" stroke-width="2" fill="none" marker-end="url(#ab)"/>
+    <path d="M1090 284 L1090 297 L238 297 L238 305" stroke="#34d3e6" stroke-width="2" fill="none" marker-end="url(#ab)"/>
     <!-- facts to aggregate to sinks -->
     <path d="M426 400 L467 400" stroke="#34d3e6" stroke-width="2" fill="none" marker-end="url(#ab)"/>
     <path d="M772 400 L815 400" stroke="#86a0a8" stroke-width="2" fill="none" marker-end="url(#a)"/>
