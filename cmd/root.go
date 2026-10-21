@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -54,6 +55,12 @@ func init() {
 func initConfig() error {
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
+		// .json and .toml keep their format; every other name (tfmetrics.conf,
+		// /dev/stdin, a Viper-only format like .ini that cannot hold nested
+		// config) is read as YAML.
+		if ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(cfgFile), ".")); !slices.Contains([]string{"json", "toml"}, ext) {
+			v.SetConfigType("yaml")
+		}
 	} else {
 		v.SetConfigName("tfmetrics")
 		v.SetConfigType("yaml")
