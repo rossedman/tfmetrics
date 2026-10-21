@@ -49,7 +49,7 @@ modules:
   internal_registry: app.terraform.io
   registry_token_env: TFE_TOKEN
   aliases:
-    terraform-aws-modules/eks/aws: app.terraform.io/acme/eks/aws
+    "git::https://github.com/acme/tf-vpc.git": tfe.acme.internal/acme/vpc/aws
 
 labels:
   properties: [team, tier]         # custom properties promoted to labels

@@ -22,9 +22,10 @@ import (
 )
 
 // KeyDelimiter separates nested config keys in the viper instance from
-// NewViper. It is not ".", so map keys that contain dots (module alias sources
-// such as github.com/acme/old) survive loading.
-const KeyDelimiter = "::"
+// NewViper. Module alias keys are module sources, which contain dots
+// (github.com/acme/old) and "::" (git::https://...), so the delimiter is a
+// control character that cannot appear in one.
+const KeyDelimiter = "\x1f"
 
 // NewViper returns a viper instance for tfmetrics config: nested keys are
 // joined with KeyDelimiter and environment variables are TFMETRICS_ plus the

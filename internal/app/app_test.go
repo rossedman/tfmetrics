@@ -480,11 +480,20 @@ func TestNewViperEnv(t *testing.T) {
 
 func TestDottedAliasKeys(t *testing.T) {
 	t.Parallel()
-	c, err := LoadConfig(viperFrom(t, "modules:\n  aliases:\n    github.com/acme/old: app.terraform.io/acme/new/aws\n"))
+	yaml := "modules:\n  aliases:\n" +
+		"    github.com/acme/old: app.terraform.io/acme/new/aws\n" +
+		"    \"git::https://github.com/acme/tf-vpc.git\": tfe.acme.internal/acme/vpc/aws\n"
+	c, err := LoadConfig(viperFrom(t, yaml))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Modules.Aliases["github.com/acme/old"]; got != "app.terraform.io/acme/new/aws" {
-		t.Errorf("aliases = %v", c.Modules.Aliases)
+	want := map[string]string{
+		"github.com/acme/old":                     "app.terraform.io/acme/new/aws",
+		"git::https://github.com/acme/tf-vpc.git": "tfe.acme.internal/acme/vpc/aws",
+	}
+	for k, v := range want {
+		if got := c.Modules.Aliases[k]; got != v {
+			t.Errorf("aliases[%q] = %q, want %q (all: %v)", k, got, v, c.Modules.Aliases)
+		}
 	}
 }
