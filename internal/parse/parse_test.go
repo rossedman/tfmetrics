@@ -641,3 +641,27 @@ func BenchmarkModuleProd(b *testing.B) {
 		_ = Module(root, "live/prod", Options{})
 	}
 }
+
+// TestParserPanicBecomesDiagnostic is the FuzzModule crash: terraform-config-inspect's
+// legacy HCL1 JSON scanner panics on this file. The module must come back with
+// an error diagnostic instead of crashing the scan.
+func TestParserPanicBecomesDiagnostic(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"bad/main.tf.json": "{\"\\a\\a\\a\\a\\a\\a\\a\\0",
+		"bad/ok.tf":        "resource \"aws_s3_bucket\" \"logs\" {}\n",
+	})
+	m := Module(root, "bad", Options{})
+	if m.ParseErrorFiles() != 1 || m.Files != 2 {
+		t.Fatalf("diagnostics %+v, files %d", m.Diagnostics, m.Files)
+	}
+	d := m.Diagnostics[0]
+	if d.Summary != "Terraform parser crashed" || d.File != "bad" || !strings.Contains(d.Detail, "panic") {
+		t.Errorf("diagnostic = %+v", d)
+	}
+	if m.Kind != "child" {
+		t.Errorf("kind = %s", m.Kind)
+	}
+	assertNonNil(t, m)
+}

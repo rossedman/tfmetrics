@@ -6,6 +6,7 @@ package parse
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -64,7 +65,13 @@ func Module(repoRoot, rel string, opts Options) facts.ModuleFacts {
 	m.Kind = classify.Kind(rel, r.signals, opts.RootOverrides)
 	m.Diagnostics = append(m.Diagnostics, r.diags...)
 
-	mod, diags := tfconfig.LoadModule(dir)
+	mod, diags, err := loadModule(dir)
+	if err != nil {
+		m.Diagnostics = append(m.Diagnostics, facts.Diagnostic{
+			Severity: facts.SeverityError, Summary: "Terraform parser crashed", Detail: err.Error(), File: rel,
+		})
+		return finish(m)
+	}
 	for _, d := range diags {
 		m.Diagnostics = append(m.Diagnostics, convertDiag(d, repoRoot))
 	}
@@ -94,6 +101,19 @@ func Module(repoRoot, rel string, opts Options) facts.ModuleFacts {
 		})
 	}
 	return finish(m)
+}
+
+// loadModule calls tfconfig.LoadModule and turns a panic inside it into an
+// error. Its legacy HCL1 fallback panics on some malformed .tf.json files, and
+// one bad file must not take down a scan of a whole org.
+func loadModule(dir string) (mod *tfconfig.Module, diags tfconfig.Diagnostics, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			mod, diags, err = nil, nil, fmt.Errorf("panic: %v", r)
+		}
+	}()
+	mod, diags = tfconfig.LoadModule(dir)
+	return mod, diags, nil
 }
 
 // finish sorts every slice so output is deterministic, and replaces nil slices
