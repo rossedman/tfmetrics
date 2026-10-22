@@ -169,3 +169,32 @@ func BenchmarkFindModuleDirs(b *testing.B) {
 		}
 	}
 }
+
+func TestFindModuleDirsDefaultsSkipTestFixtures(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, f := range []string{
+		"main.tf",
+		"modules/vpc/main.tf",
+		"modules/vpc/tests/setup/main.tf",
+		"internal/service/testdata/basic.tf",
+		"test/fixture/main.tf",
+		"examples/simple/main.tf",
+		"contests/main.tf", // only whole directory names match
+	} {
+		p := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("#"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := FindModuleDirs(root, DefaultIgnoreDirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{".", "contests", "modules/vpc"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}

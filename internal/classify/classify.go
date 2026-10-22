@@ -11,7 +11,7 @@ import (
 )
 
 // DefaultIgnoreDirs are skipped unless the config says otherwise.
-var DefaultIgnoreDirs = []string{".terraform", "examples", "test"}
+var DefaultIgnoreDirs = []string{".terraform", "examples", "test", "tests", "testdata"}
 
 // IsTerraformFile reports whether a file name is Terraform configuration.
 func IsTerraformFile(name string) bool {
