@@ -41,7 +41,7 @@ tfmetrics org [flags]
       --out string             directory to write facts files to (default "facts")
       --property stringArray   include repos whose custom property matches: key=value[,value]; repeat for more keys
       --ref string             branch, tag or commit to scan (default: each repo's default branch)
-      --sink strings           also aggregate and emit to these sinks: json, openmetrics, otlp, csv, parquet, markdown
+      --sink strings           also aggregate and emit to these sinks: json, openmetrics, otlp, csv, parquet, markdown, sarif
       --strict                 exit non-zero if any repo fails to scan
       --topic strings          include repos with any of these topics
 ```

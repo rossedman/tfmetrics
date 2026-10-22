@@ -37,6 +37,12 @@ sum(tf_required_version{constraint="none"})
 # The ten modules furthest behind their latest release
 topk(10, tf_module_versions_behind)
 
+# The providers furthest behind, across every repo
+topk(10, max by (provider) (tf_provider_versions_behind))
+
+# Repos on the oldest Terraform versions
+sort_desc(tf_terraform_versions_behind)
+
 # Who still uses an old version of one module
 sum by (version, owner) (tf_module_calls{address="app.terraform.io/acme/sqs/aws"})
 ```

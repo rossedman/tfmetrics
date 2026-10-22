@@ -37,6 +37,7 @@ nav:
       - Nightly org scan: guides/nightly-org-scan.md
       - PR check: guides/pr-check.md
       - Dashboards and trends: guides/dashboards.md
+      - Who uses a module: guides/who-uses.md
   - Sinks:
       - Overview: sinks/index.md
       - Prometheus: sinks/openmetrics.md
@@ -45,6 +46,7 @@ nav:
       - CSV: sinks/csv.md
       - JSON: sinks/json.md
       - Markdown: sinks/markdown.md
+      - SARIF: sinks/sarif.md
   - Reference:
       - Metrics catalog: reference/metrics.md
       - Facts file: reference/facts.md
@@ -55,6 +57,7 @@ nav:
           - tfmetrics org: reference/commands/tfmetrics_org.md
           - tfmetrics aggregate: reference/commands/tfmetrics_aggregate.md
           - tfmetrics explain: reference/commands/tfmetrics_explain.md
+          - tfmetrics who-uses: reference/commands/tfmetrics_who-uses.md
           - tfmetrics version: reference/commands/tfmetrics_version.md
   - Project:
       - Contributing: contributing.md

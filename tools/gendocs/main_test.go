@@ -13,7 +13,7 @@ func TestGenerateWritesOnePagePerCommand(t *testing.T) {
 	if err := generate(dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"tfmetrics", "tfmetrics_scan", "tfmetrics_aggregate", "tfmetrics_explain", "tfmetrics_org", "tfmetrics_version"} {
+	for _, name := range []string{"tfmetrics", "tfmetrics_scan", "tfmetrics_aggregate", "tfmetrics_explain", "tfmetrics_org", "tfmetrics_version", "tfmetrics_who-uses"} {
 		b, err := os.ReadFile(filepath.Join(dir, name+".md"))
 		if err != nil {
 			t.Errorf("missing page %s: %v", name, err)
@@ -27,8 +27,8 @@ func TestGenerateWritesOnePagePerCommand(t *testing.T) {
 		}
 	}
 	entries, _ := os.ReadDir(dir)
-	if len(entries) != 6 {
-		t.Errorf("pages = %d, want 6", len(entries))
+	if len(entries) != 7 {
+		t.Errorf("pages = %d, want 7", len(entries))
 	}
 	scan, _ := os.ReadFile(filepath.Join(dir, "tfmetrics_scan.md"))
 	if !strings.Contains(string(scan), "--sink") || !strings.Contains(string(scan), "[tfmetrics](tfmetrics.md)") {

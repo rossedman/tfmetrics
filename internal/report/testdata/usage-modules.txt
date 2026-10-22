@@ -1,0 +1,7 @@
+eks/aws: 3 calls in 2 repos
+versions: none (1), 19.21.0 (1), ~> 21.0 (1)
+
+ADDRESS                                                                 REPO      OWNER          MODULE     VERSION  PINNED  BEHIND  FILE
+registry.terraform.io/terraform-aws-modules/eks/aws                     acme/api  unowned        .          -        none    -       -
+registry.terraform.io/terraform-aws-modules/eks/aws                     acme/web  acme/web-team  live/prod  19.21.0  exact   3       live/prod/eks.tf:3
+registry.terraform.io/terraform-aws-modules/eks/aws//modules/karpenter  acme/web  acme/web-team  live/prod  ~> 21.0  range   0       live/prod/eks.tf

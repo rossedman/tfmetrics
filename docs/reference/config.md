@@ -112,6 +112,9 @@ sinks:
   - markdown:
       path: "-"
       step_summary: false
+  - sarif:
+      path: metrics/sarif
+      min_behind: 0
 ```
 
 ## Keys
@@ -197,6 +200,8 @@ A list where each item has exactly one key, the sink name, whose value is a map 
 | `parquet` | `path` | string | `--out` | Directory for `modules.parquet` and `module_calls.parquet`. |
 | `markdown` | `path` | string | `-` (stdout) | File to write. |
 | `markdown` | `step_summary` | bool | `false` | Also append to `$GITHUB_STEP_SUMMARY`. |
+| `sarif` | `path` | string | `<out>/sarif` | Directory for one SARIF log per repo. |
+| `sarif` | `min_behind` | int | `0` (off) | Release lines behind before a module call is reported as outdated. |
 
 ### out
 

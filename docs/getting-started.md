@@ -135,7 +135,7 @@ $ grep hygiene metrics/metrics.prom | tail -1
 tf_hygiene_score{org="acme",owner="acme/platform",repo="acme/infra"} 65.3
 ```
 
-Drop `--offline` to look up each module's available versions and add `tf_module_versions_behind`. Lookups that fail (a private registry without a token, an unreachable git remote) print a warning and leave that series out; they never fail the run.
+Drop `--offline` to look up the available versions of each module, provider and Terraform itself, and add `tf_module_versions_behind`, `tf_provider_versions_behind` and `tf_terraform_versions_behind`. Lookups that fail (a private registry without a token, an unreachable git remote) print a warning and leave that series out; they never fail the run.
 
 ## Next steps
 

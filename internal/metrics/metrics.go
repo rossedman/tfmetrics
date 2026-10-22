@@ -18,44 +18,48 @@ import (
 
 // Metric names.
 const (
-	ReposTotal             = "tf_repos_total"
-	ModulesTotal           = "tf_modules_total"
-	ResourcesDeclared      = "tf_resources_declared"
-	DataSourcesDeclared    = "tf_data_sources_declared"
-	ModuleCalls            = "tf_module_calls"
-	ModuleVersionsBehind   = "tf_module_versions_behind"
-	ModuleCallsUnpinned    = "tf_module_calls_unpinned"
-	ProviderConstraint     = "tf_provider_constraint"
-	RequiredVersion        = "tf_required_version"
-	Backend                = "tf_backend"
-	VariablesUntyped       = "tf_variables_untyped"
-	VariablesUndescribed   = "tf_variables_undescribed"
-	OutputsUndescribed     = "tf_outputs_undescribed"
-	PreventDestroyResource = "tf_prevent_destroy_resources"
-	ModuleLines            = "tf_module_lines"
-	ParseErrors            = "tf_parse_errors"
-	HygieneScore           = "tf_hygiene_score"
+	ReposTotal              = "tf_repos_total"
+	ModulesTotal            = "tf_modules_total"
+	ResourcesDeclared       = "tf_resources_declared"
+	DataSourcesDeclared     = "tf_data_sources_declared"
+	ModuleCalls             = "tf_module_calls"
+	ModuleVersionsBehind    = "tf_module_versions_behind"
+	ProviderVersionsBehind  = "tf_provider_versions_behind"
+	TerraformVersionsBehind = "tf_terraform_versions_behind"
+	ModuleCallsUnpinned     = "tf_module_calls_unpinned"
+	ProviderConstraint      = "tf_provider_constraint"
+	RequiredVersion         = "tf_required_version"
+	Backend                 = "tf_backend"
+	VariablesUntyped        = "tf_variables_untyped"
+	VariablesUndescribed    = "tf_variables_undescribed"
+	OutputsUndescribed      = "tf_outputs_undescribed"
+	PreventDestroyResource  = "tf_prevent_destroy_resources"
+	ModuleLines             = "tf_module_lines"
+	ParseErrors             = "tf_parse_errors"
+	HygieneScore            = "tf_hygiene_score"
 )
 
 // Help is the one-line description of each metric.
 var Help = map[string]string{
-	ReposTotal:             "Repos with at least one Terraform module.",
-	ModulesTotal:           "Module directories, by root or child.",
-	ResourcesDeclared:      "Resource blocks declared (declarations, not instances).",
-	DataSourcesDeclared:    "Data source blocks declared.",
-	ModuleCalls:            "Calls to each module address and version.",
-	ModuleVersionsBehind:   "Major or minor releases between the pinned version and the latest.",
-	ModuleCallsUnpinned:    "Remote module calls with no version or ref.",
-	ProviderConstraint:     "Root modules per distinct provider version constraint.",
-	RequiredVersion:        "Root modules per Terraform core version constraint; none if absent.",
-	Backend:                "Root modules by backend type.",
-	VariablesUntyped:       "Variables missing a type.",
-	VariablesUndescribed:   "Variables missing a description.",
-	OutputsUndescribed:     "Outputs missing a description.",
-	PreventDestroyResource: "Resources with prevent_destroy = true.",
-	ModuleLines:            "Lines of Terraform configuration.",
-	ParseErrors:            "Files that failed to parse.",
-	HygieneScore:           "Weighted 0-100 hygiene score.",
+	ReposTotal:              "Repos with at least one Terraform module.",
+	ModulesTotal:            "Module directories, by root or child.",
+	ResourcesDeclared:       "Resource blocks declared (declarations, not instances).",
+	DataSourcesDeclared:     "Data source blocks declared.",
+	ModuleCalls:             "Calls to each module address and version.",
+	ModuleVersionsBehind:    "Major or minor releases between the pinned version and the latest.",
+	ProviderVersionsBehind:  "Major or minor releases between the provider version a constraint selects and the latest.",
+	TerraformVersionsBehind: "Major or minor Terraform releases between the version required_version selects and the latest.",
+	ModuleCallsUnpinned:     "Remote module calls with no version or ref.",
+	ProviderConstraint:      "Root modules per distinct provider version constraint.",
+	RequiredVersion:         "Root modules per Terraform core version constraint; none if absent.",
+	Backend:                 "Root modules by backend type.",
+	VariablesUntyped:        "Variables missing a type.",
+	VariablesUndescribed:    "Variables missing a description.",
+	OutputsUndescribed:      "Outputs missing a description.",
+	PreventDestroyResource:  "Resources with prevent_destroy = true.",
+	ModuleLines:             "Lines of Terraform configuration.",
+	ParseErrors:             "Files that failed to parse.",
+	HygieneScore:            "Weighted 0-100 hygiene score.",
 }
 
 // Series is one labelled gauge value.
@@ -70,6 +74,18 @@ type Metrics struct {
 	GeneratedAt time.Time `json:"generated_at"`
 	Repos       int       `json:"repos"`
 	Series      []Series  `json:"series"`
+	// Drift is how far behind each module call is, for sinks that report per
+	// call. The catalog keeps only the largest value per address, so this is
+	// not part of it, and JSON leaves it out.
+	Drift []CallDrift `json:"-"`
+}
+
+// CallDrift is how many release lines one module call trails the latest by.
+type CallDrift struct {
+	Repo   string // the repo making the call
+	Module string // the calling module's path
+	Name   string // the module block's name
+	Behind int
 }
 
 // Options control aggregation.
@@ -169,7 +185,7 @@ func Compute(ctx context.Context, results []facts.ScanResult, opts Options) Metr
 		ol := orgLabels(r, opts.PropertyLabels)
 		b.add(ReposTotal, ol, 1)
 		base := with(ol, "repo", r.Repo, "owner", Owner(r))
-		repoMetrics(ctx, b, r, base, opts)
+		m.Drift = append(m.Drift, repoMetrics(ctx, b, r, base, opts)...)
 	}
 	m.Series = b.series
 	if len(opts.DropLabels) > 0 {
@@ -182,13 +198,33 @@ func Compute(ctx context.Context, results []facts.ScanResult, opts Options) Metr
 	return m
 }
 
-// repoMetrics adds every per-repo series.
-func repoMetrics(ctx context.Context, b *builder, r facts.ScanResult, base map[string]string, opts Options) {
+// repoMetrics adds every per-repo series and returns each module call's drift.
+func repoMetrics(ctx context.Context, b *builder, r facts.ScanResult, base map[string]string, opts Options) []CallDrift {
+	var drift []CallDrift
 	var untyped, undescVars, undescOut, parseErrs float64
 	unpinned := map[string]float64{}
 	behind := map[string]int{}
 	behindKnown := map[string]bool{}
+	providerBehind := map[string]int{}
+	providerKnown := map[string]bool{}
+	tfBehind, tfKnown := 0, false
 	for _, mod := range r.Modules {
+		for _, p := range mod.Providers {
+			addr, ok := source.ProviderAddress(p.Source, p.Name)
+			if !ok || p.Constraint == "" {
+				continue
+			}
+			if n, ok := constraintBehind(ctx, source.KindProvider, addr, p.Constraint, opts); ok {
+				providerKnown[addr] = true
+				providerBehind[addr] = max(providerBehind[addr], n)
+			}
+		}
+		if mod.Kind == facts.KindRoot && mod.RequiredVersion != "" {
+			if n, ok := constraintBehind(ctx, source.KindGit, TerraformReleases, mod.RequiredVersion, opts); ok {
+				tfKnown = true
+				tfBehind = max(tfBehind, n)
+			}
+		}
 		b.add(ModulesTotal, with(base, "kind", mod.Kind), 1)
 		b.add(ModuleLines, with(base, "kind", mod.Kind), float64(mod.Lines))
 		for _, res := range mod.Resources {
@@ -212,6 +248,7 @@ func repoMetrics(ctx context.Context, b *builder, r facts.ScanResult, base map[s
 				unpinned[c.SourceKind]++
 			}
 			if n, ok := versionsBehind(ctx, c, opts); ok {
+				drift = append(drift, CallDrift{Repo: r.Repo, Module: mod.Path, Name: c.Name, Behind: n})
 				behindKnown[c.Address] = true
 				if n > behind[c.Address] {
 					behind[c.Address] = n
@@ -250,11 +287,18 @@ func repoMetrics(ctx context.Context, b *builder, r facts.ScanResult, base map[s
 	for addr := range behindKnown {
 		b.add(ModuleVersionsBehind, with(base, "address", addr), float64(behind[addr]))
 	}
+	for addr := range providerKnown {
+		b.add(ProviderVersionsBehind, with(base, "provider", source.ProviderLabel(addr)), float64(providerBehind[addr]))
+	}
+	if tfKnown {
+		b.add(TerraformVersionsBehind, base, float64(tfBehind))
+	}
 	b.add(VariablesUntyped, base, untyped)
 	b.add(VariablesUndescribed, base, undescVars)
 	b.add(OutputsUndescribed, base, undescOut)
 	b.add(ParseErrors, base, parseErrs)
 	b.add(HygieneScore, base, Hygiene(r, opts.Weights).Score)
+	return drift
 }
 
 // versionsBehind looks up how far one call lags. ok is false when it cannot
@@ -285,6 +329,48 @@ func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int,
 		return 0, false
 	}
 	return versions.Behind(pinned, avail), true
+}
+
+// CallBehind reports how many release lines a module call trails the latest
+// release by, by the same rule as tf_module_versions_behind. ok is false when
+// that cannot be known: no lister, an unpinned call or SHA ref, a failed
+// lookup, or a version nothing satisfies. Lookup errors are returned through
+// onErr when it is set.
+func CallBehind(ctx context.Context, c facts.ModuleCall, lister VersionLister, onErr func(string, error)) (int, bool) {
+	return versionsBehind(ctx, c, Options{Versions: lister, OnLookupError: onErr})
+}
+
+// ProviderBehind reports how many release lines the version a provider
+// constraint selects trails the latest by, as tf_provider_versions_behind
+// counts it. address is host/namespace/type.
+func ProviderBehind(ctx context.Context, address, constraint string, lister VersionLister, onErr func(string, error)) (int, bool) {
+	return constraintBehind(ctx, source.KindProvider, address, constraint, Options{Versions: lister, OnLookupError: onErr})
+}
+
+// TerraformReleases is the git remote whose tags list Terraform's releases.
+const TerraformReleases = "github.com/hashicorp/terraform"
+
+// constraintBehind resolves a version constraint the way terraform init would,
+// against the versions available for address, and counts the newer release
+// lines. ok is false without a lister, when the lookup fails, or when nothing
+// satisfies the constraint.
+func constraintBehind(ctx context.Context, kind, address, constraint string, opts Options) (int, bool) {
+	if opts.Versions == nil {
+		return 0, false
+	}
+	raw, err := opts.Versions.Versions(ctx, kind, address)
+	if err != nil {
+		if opts.OnLookupError != nil {
+			opts.OnLookupError(address, err)
+		}
+		return 0, false
+	}
+	avail := versions.Parse(raw)
+	selected := versions.Selected(constraint, avail)
+	if selected == nil {
+		return 0, false
+	}
+	return versions.Behind(selected, avail), true
 }
 
 // componentTags returns the versions of the tags that carry prefix, with the
@@ -393,14 +479,26 @@ func Prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLis
 	type key struct{ kind, addr string }
 	seen := map[key]bool{}
 	var keys []key
+	want := func(k key) {
+		if !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
 	for _, r := range results {
 		for _, m := range r.Modules {
 			for _, c := range m.ModuleCalls {
-				k := key{c.SourceKind, c.Address}
-				if needsLookup(c) && !seen[k] {
-					seen[k] = true
-					keys = append(keys, k)
+				if needsLookup(c) {
+					want(key{c.SourceKind, c.Address})
 				}
+			}
+			for _, p := range m.Providers {
+				if addr, ok := source.ProviderAddress(p.Source, p.Name); ok && p.Constraint != "" {
+					want(key{source.KindProvider, addr})
+				}
+			}
+			if m.Kind == facts.KindRoot && m.RequiredVersion != "" {
+				want(key{source.KindGit, TerraformReleases})
 			}
 		}
 	}

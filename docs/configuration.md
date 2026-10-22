@@ -178,5 +178,7 @@ A list where each item has exactly one key, the sink name, whose value is that s
 | `parquet` | `path` | `--out` | Directory for `modules.parquet` and `module_calls.parquet`. |
 | `markdown` | `path` | `-` | File to write, or `-` for stdout. |
 | `markdown` | `step_summary` | `false` | Also append to the file named by `$GITHUB_STEP_SUMMARY`. |
+| `sarif` | `path` | `<out>/sarif` | Directory for one SARIF log per repo. |
+| `sarif` | `min_behind` | `0` (off) | Release lines behind before a module call is reported as outdated. |
 
 File sinks write to local paths only. For object storage, write locally and upload (`aws s3 cp`, `gcloud storage cp`).

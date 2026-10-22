@@ -104,3 +104,7 @@ awk -v s="$score" 'BEGIN { exit (s >= 80) ? 0 : 1 }'
 ```
 
 Start with a threshold just under your current score and raise it as the score rises. The score is weighted, so [tune the weights](../configuration.md#hygiene) to what you want PRs to enforce, such as `pinned` and `required_version` only.
+
+## Annotate the diff
+
+The `sarif` sink turns parse errors, unpinned modules and branch-pinned git modules into code scanning alerts, which GitHub shows as annotations on the lines a pull request changes. Add `--sink sarif` to the scan and upload the logs; the [SARIF sink](../sinks/sarif.md) has the workflow.

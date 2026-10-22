@@ -9,8 +9,9 @@ Sinks come from --sink, or from the sinks list in the config when no --sink
 is given; with neither, the json sink is used. A --sink named in the config
 takes its options from there.
 
-Version drift (tf_module_versions_behind) needs registry and git tag lookups;
---offline skips them.
+Version drift (tf_module_versions_behind, tf_provider_versions_behind and
+tf_terraform_versions_behind) needs registry and git tag lookups; --offline
+skips them.
 
 ```
 tfmetrics aggregate <facts dir|file>... [flags]
@@ -29,7 +30,7 @@ tfmetrics aggregate <facts dir|file>... [flags]
   -h, --help           help for aggregate
       --offline        skip registry and git tag lookups (no versions_behind)
       --out string     default directory for file sinks (default "metrics")
-      --sink strings   sinks to write: json, openmetrics, otlp, csv, parquet, markdown
+      --sink strings   sinks to write: json, openmetrics, otlp, csv, parquet, markdown, sarif
 ```
 
 ### Options inherited from parent commands
