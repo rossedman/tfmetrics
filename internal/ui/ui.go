@@ -42,7 +42,7 @@ const (
 	IconCached = "↺"
 	IconErr    = "✗"
 	IconWarn   = "!"
-	IconWait   = "⏸"
+	IconWait   = "◷"
 )
 
 // Interactive reports whether w is a terminal that can show live progress:

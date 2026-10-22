@@ -127,7 +127,10 @@ func stat(label string, n int, detail string) string {
 
 // bar renders a fraction from 0 to 1 as a bar width cells wide.
 func bar(frac float64, width int) string {
-	p := progress.New(progress.WithColors(ui.ScoreStyle(frac*100).GetForeground()), progress.WithoutPercentage(), progress.WithWidth(width))
+	// Full blocks: the default half blocks need a background color behind
+	// them, which a static report does not paint.
+	p := progress.New(progress.WithColors(ui.ScoreStyle(frac*100).GetForeground()), progress.WithoutPercentage(),
+		progress.WithWidth(width), progress.WithFillCharacters('█', '░'))
 	return p.ViewAs(frac)
 }
 

@@ -111,6 +111,7 @@ func (t *plainTracker) println(s string) {
 type liveTracker struct {
 	p       *tea.Program
 	profile colorprofile.Profile
+	width   int // the terminal's width, or 0 when unknown
 	items   bool
 	done    chan struct{}
 	once    sync.Once
@@ -123,6 +124,7 @@ func newLiveTracker(w io.Writer, opts Options) *liveTracker {
 	m := newModel(opts, time.Now)
 	t := &liveTracker{
 		profile: colorprofile.Detect(w, os.Environ()),
+		width:   Width(w),
 		items:   opts.Items,
 		done:    make(chan struct{}),
 	}
@@ -170,11 +172,17 @@ func (t *liveTracker) Wait(reason string, d time.Duration) {
 	t.send(waitMsg{reason: reason, until: time.Now().Add(d)})
 }
 
-// Warn prints the warning above the view.
+// Warn prints the warning above the view, cut to one line so a long error
+// does not bury the progress; --plain prints warnings in full.
 func (t *liveTracker) Warn(msg string) {
-	if !t.closed.Load() {
-		t.println(Warn.Render(IconWarn + " " + msg))
+	if t.closed.Load() {
+		return
 	}
+	line := IconWarn + " " + firstLine(msg)
+	if t.width > 0 {
+		line = truncate(line, t.width)
+	}
+	t.println(Warn.Render(line))
 }
 
 // println prints s above the view, with its colors reduced to what the

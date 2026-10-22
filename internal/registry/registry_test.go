@@ -600,7 +600,7 @@ func TestHTMLErrorPageIsNotQuoted(t *testing.T) {
 	defer srv.Close()
 	r := &Resolver{Scheme: "http"}
 	_, err := r.Versions(context.Background(), source.KindRegistry, strings.TrimPrefix(srv.URL, "http://")+"/a/b/c")
-	if err == nil || strings.Contains(err.Error(), "<") || !strings.HasSuffix(err.Error(), "404 Not Found") {
+	if err == nil || strings.Contains(err.Error(), "<") || !strings.Contains(err.Error(), "404 Not Found (GET http://") {
 		t.Errorf("err = %v", err)
 	}
 }
