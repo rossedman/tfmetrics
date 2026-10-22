@@ -510,3 +510,97 @@ func BenchmarkParseTags(b *testing.B) {
 		}
 	}
 }
+
+func TestSubdirectoriesShareALookup(t *testing.T) {
+	t.Parallel()
+	f := newFakeRegistry(t, func(string) string { return "/v1/modules/" }, 0)
+	r := newResolver()
+	for _, addr := range []string{"/a/b/c", "/a/b/c//modules/x", "/a/b/c//modules/y"} {
+		if _, err := r.Versions(context.Background(), source.KindRegistry, f.host()+addr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := f.versions.Load(); got != 1 {
+		t.Errorf("versions hits = %d, want 1", got)
+	}
+}
+
+func TestConcurrentCallersShareALookup(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	var calls atomic.Int32
+	r := &Resolver{GitTags: func(context.Context, string) ([]string, error) {
+		calls.Add(1)
+		<-release
+		return []string{"v1.0.0"}, nil
+	}}
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Go(func() {
+			got, err := r.Versions(context.Background(), source.KindGit, fmt.Sprintf("github.com/acme/mod//sub%d", i))
+			if err != nil || !slices.Equal(got, []string{"v1.0.0"}) {
+				t.Errorf("got %v, %v", got, err)
+			}
+		})
+	}
+	time.Sleep(20 * time.Millisecond) // let the callers queue behind the first
+	close(release)
+	wg.Wait()
+	if got := calls.Load(); got != 1 {
+		t.Errorf("lookups = %d, want 1", got)
+	}
+}
+
+func TestWaitingCallerHonoursContext(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	defer close(release)
+	started := make(chan struct{})
+	r := &Resolver{GitTags: func(context.Context, string) ([]string, error) {
+		close(started)
+		<-release
+		return nil, nil
+	}}
+	go func() { _, _ = r.Versions(context.Background(), source.KindGit, "github.com/acme/mod") }()
+	<-started
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := r.Versions(ctx, source.KindGit, "github.com/acme/mod"); !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+}
+
+func TestErrorDetail(t *testing.T) {
+	t.Parallel()
+	long := "a" + strings.Repeat("é", 150) // byte 200 falls inside a rune
+	tests := []struct {
+		name, contentType, body, want string
+	}{
+		{"json", "application/json", `{"errors":["Not Found"]}`, `{"errors":["Not Found"]}`},
+		{"text spans lines", "text/plain", "bad\n  request\n", "bad request"},
+		{"html by content type", "text/html; charset=utf-8", "Not a registry", ""},
+		{"html by body", "", "  <!doctype html><html>...", ""},
+		{"empty", "application/json", "", ""},
+		{"long", "text/plain", long, "a" + strings.Repeat("é", 99) + "..."},
+	}
+	for _, tt := range tests {
+		if got := errorDetail(tt.contentType, []byte(tt.body)); got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestHTMLErrorPageIsNotQuoted(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, "<!doctype html><html><title>Example Domain</title></html>")
+	}))
+	defer srv.Close()
+	r := &Resolver{Scheme: "http"}
+	_, err := r.Versions(context.Background(), source.KindRegistry, strings.TrimPrefix(srv.URL, "http://")+"/a/b/c")
+	if err == nil || strings.Contains(err.Error(), "<") || !strings.HasSuffix(err.Error(), "404 Not Found") {
+		t.Errorf("err = %v", err)
+	}
+}
