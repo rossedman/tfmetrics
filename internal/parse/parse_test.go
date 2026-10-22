@@ -665,3 +665,61 @@ func TestParserPanicBecomesDiagnostic(t *testing.T) {
 	}
 	assertNonNil(t, m)
 }
+
+func TestModuleDuplicateBlocks(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	block := `module "eks" { source = "./eks" }
+resource "aws_vpc" "a" {}
+data "aws_region" "r" {}
+variable "v" {}
+output "o" { value = 1 }
+`
+	writeTree(t, root, map[string]string{
+		"stack/a.tf":      block,
+		"stack/b.tf":      block,
+		"stack/c.tf.json": `{"module": {"eks": {"source": "./eks"}}, "resource": {"aws_vpc": {"b": {}}}}`,
+	})
+	m := Module(root, "stack", Options{})
+	if len(m.ModuleCalls) != 1 || len(m.Resources) != 2 {
+		t.Fatalf("calls = %+v, resources = %+v", m.ModuleCalls, m.Resources)
+	}
+	want := map[string]int{
+		"Duplicate module call": 2, "Duplicate resource": 1, "Duplicate data source": 1,
+		"Duplicate variable": 1, "Duplicate output": 1,
+	}
+	got := map[string]int{}
+	for _, d := range m.Diagnostics {
+		got[d.Summary]++
+		if d.Severity != facts.SeverityError {
+			t.Errorf("severity = %q, want error: %+v", d.Severity, d)
+		}
+		if d.File == "stack/a.tf" || d.Line == 0 {
+			t.Errorf("duplicate reported at the first declaration: %+v", d)
+		}
+		if !strings.Contains(d.Detail, "stack/a.tf:") {
+			t.Errorf("detail does not point at the first declaration: %q", d.Detail)
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("diagnostics = %v, want %v", got, want)
+	}
+	if m.ParseErrorFiles() != 2 {
+		t.Errorf("parse error files = %d, want 2", m.ParseErrorFiles())
+	}
+}
+
+func TestModuleSameNameDifferentTypesIsNotDuplicate(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{"main.tf": `resource "aws_vpc" "x" {}
+data "aws_vpc" "x" {}
+module "x" { source = "./x" }
+variable "x" {}
+output "x" { value = 1 }
+resource "aws_subnet" "x" {}
+`})
+	if m := Module(root, ".", Options{}); len(m.Diagnostics) != 0 {
+		t.Errorf("diagnostics = %+v", m.Diagnostics)
+	}
+}

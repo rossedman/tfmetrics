@@ -53,7 +53,7 @@ When a repo calls the same address several times, the series holds the largest v
 | `tf_variables_untyped` | none | Variables with no `type`. |
 | `tf_variables_undescribed` | none | Variables with no `description`. |
 | `tf_outputs_undescribed` | none | Outputs with no `description`. |
-| `tf_parse_errors` | none | Files that failed to parse. A file counts once however many errors it has. |
+| `tf_parse_errors` | none | Files with an error diagnostic: a syntax error, or a block that repeats an address declared earlier in the module. A file counts once however many errors it has. |
 | `tf_hygiene_score` | none | Weighted score from 0 to 100. See below. |
 
 ### Hygiene score
