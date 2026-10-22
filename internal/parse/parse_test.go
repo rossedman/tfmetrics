@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-config-inspect/tfconfig"
+
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/source"
 )
@@ -721,5 +723,103 @@ resource "aws_subnet" "x" {}
 `})
 	if m := Module(root, ".", Options{}); len(m.Diagnostics) != 0 {
 		t.Errorf("diagnostics = %+v", m.Diagnostics)
+	}
+}
+
+// moduleView is what parse reads from a tfconfig module, without source
+// positions, whose file names differ between the two loaders.
+func moduleView(m *tfconfig.Module) map[string]any {
+	calls := map[string][2]string{}
+	for k, c := range m.ModuleCalls {
+		calls[k] = [2]string{c.Source, c.Version}
+	}
+	res := map[string]string{}
+	for k, r := range m.ManagedResources {
+		res[k] = r.Provider.Name
+	}
+	for k, r := range m.DataResources {
+		res["data."+k] = r.Provider.Name
+	}
+	vars := map[string][4]any{}
+	for k, v := range m.Variables {
+		vars[k] = [4]any{v.Type, v.Description, v.Required, v.Sensitive}
+	}
+	outs := map[string][2]any{}
+	for k, o := range m.Outputs {
+		outs[k] = [2]any{o.Description, o.Sensitive}
+	}
+	provs := map[string][2]any{}
+	for k, p := range m.RequiredProviders {
+		provs[k] = [2]any{p.Source, strings.Join(p.VersionConstraints, ",")}
+	}
+	return map[string]any{"calls": calls, "res": res, "vars": vars, "outs": outs, "provs": provs, "core": strings.Join(m.RequiredCore, ",")}
+}
+
+func TestLoadDirMatchesTfconfig(t *testing.T) {
+	t.Parallel()
+	synthetic := t.TempDir()
+	writeTree(t, synthetic, map[string]string{
+		"main.tf":           "terraform {\n required_version = \">= 1.5\"\n required_providers {\n aws = { source = \"hashicorp/aws\", version = \"~> 5.0\" }\n }\n}\nresource \"aws_vpc\" \"a\" {}\nresource \"google_x\" \"g\" {}\nmodule \"m\" {\n source = \"./m\"\n}\nvariable \"v\" {\n type = string\n}\n",
+		"override.tf":       "module \"m\" {\n source = \"./other\"\n version = \"1.0.0\"\n}\n",
+		"x_override.tf":     "variable \"v\" {\n description = \"set by override\"\n}\n",
+		"json.tf.json":      `{"output": {"o": {"value": 1, "description": "d", "sensitive": true}}, "data": {"aws_region": {"r": {}}}}`,
+		".hidden.tf":        "resource \"aws_vpc\" \"hidden\" {}\n",
+		"backup.tf~":        "resource \"aws_vpc\" \"backup\" {}\n",
+		"#emacs.tf#":        "resource \"aws_vpc\" \"emacs\" {}\n",
+		"stack.tfstack.hcl": "component \"c\" {\n source = \"./c\"\n}\n",
+		"old.tofu":          "resource \"aws_vpc\" \"tofu\" {}\n",
+	})
+	dirs := map[string]string{"synthetic": synthetic}
+	_ = filepath.WalkDir(fixtureRoot(), func(p string, d os.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			dirs[p] = p
+		}
+		return nil
+	})
+	compared := 0
+	for name, dir := range dirs {
+		_, got, diags := loadDir(dir, ".")
+		if got == nil || diags.HasErrors() {
+			if name == "synthetic" {
+				t.Fatalf("synthetic module has errors: %v", diags)
+			}
+			continue // Module falls back to tfconfig.LoadModule for these
+		}
+		compared++
+		want, _, err := loadModule(dir)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !reflect.DeepEqual(moduleView(got), moduleView(want)) {
+			t.Errorf("%s:\n got  %v\n want %v", name, moduleView(got), moduleView(want))
+		}
+	}
+	if compared < 5 {
+		t.Errorf("compared %d directories, want the fixture's modules and the synthetic one", compared)
+	}
+}
+
+func TestModuleWithStacksFiles(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"main.tf":                "resource \"aws_vpc\" \"a\" {}\n",
+		"stack.tfstack.hcl":      "component \"c\" {\n  source = \"./c\"\n}\n",
+		"deploy.tfcomponent.hcl": "deployment \"prod\" {}\n",
+	})
+	m := Module(root, ".", Options{})
+	if len(m.Resources) != 1 || len(m.Diagnostics) != 0 {
+		t.Errorf("resources = %+v, diagnostics = %+v", m.Resources, m.Diagnostics)
+	}
+	// The tfconfig fallback, used when a file fails to parse, skips them too.
+	writeTree(t, root, map[string]string{"broken.tf": "resource \"x\" {\n"})
+	m = Module(root, ".", Options{})
+	for _, d := range m.Diagnostics {
+		if d.Summary == "Terraform parser crashed" {
+			t.Errorf("fallback crashed on stack files: %+v", d)
+		}
+	}
+	if len(m.Resources) != 1 {
+		t.Errorf("fallback resources = %+v", m.Resources)
 	}
 }

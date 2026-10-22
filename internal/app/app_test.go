@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -568,5 +569,23 @@ func TestFindConfig(t *testing.T) {
 		if got := FindConfig(tt.dirs); got != tt.want {
 			t.Errorf("%s: FindConfig = %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestTuneGC(t *testing.T) {
+	prev := debug.SetGCPercent(100)
+	defer debug.SetGCPercent(prev)
+	TuneGC(func(string) string { return "" })
+	if got := debug.SetGCPercent(100); got != DefaultGCPercent {
+		t.Errorf("GC percent = %d, want %d", got, DefaultGCPercent)
+	}
+	TuneGC(func(k string) string {
+		if k == "GOGC" {
+			return "50"
+		}
+		return ""
+	})
+	if got := debug.SetGCPercent(100); got != 100 {
+		t.Errorf("GOGC set: GC percent = %d, want it left alone", got)
 	}
 }

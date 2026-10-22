@@ -37,6 +37,7 @@ var (
 	shaRe      = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
 	semverRe   = regexp.MustCompile(`^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$`)
 	verSegRe   = regexp.MustCompile(`(^|[/_-])v?\d+\.\d+\.\d+([/._-]|$)`)
+	tagRe      = regexp.MustCompile(`^(?:refs/)?(?:tags/)?([^\p{Z}\p{Cc}]*?[/_-])?([vV]?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$`)
 	scpGitRe   = regexp.MustCompile(`^(?:[\w.-]+@)?([\w.-]+):(.+)$`)
 )
 
@@ -234,14 +235,13 @@ func Pinning(r Ref, version string) string {
 	case KindRegistry, KindPrivateRegistry:
 		return constraintPinning(version)
 	case KindGit:
-		switch {
-		case r.Ref == "":
+		if r.Ref == "" {
 			return "none"
-		case shaRe.MatchString(r.Ref) || semverRe.MatchString(r.Ref):
-			return "exact"
-		default:
-			return "range"
 		}
+		if _, _, ok := TagVersion(r.Ref); ok || shaRe.MatchString(r.Ref) {
+			return "exact"
+		}
+		return "range"
 	default:
 		if r.Ref != "" || verSegRe.MatchString(r.Address) {
 			return "exact"
@@ -273,4 +273,23 @@ func Version(r Ref, version string) string {
 		return r.Ref
 	}
 	return strings.TrimSpace(version)
+}
+
+// TagVersion reads a release tag from a git ref. The version may be written
+// as a tag path (tags/0.4.0, refs/tags/v1.0.0) and carry a component prefix,
+// as monorepos tag their modules (vpc/v1.2.0, vpc-v1.2.0); prefix is that
+// component, separator included, and is compared only against tags that
+// share it. A leading "V" is lowered to "v". ok is false for a ref that names
+// no version, such as a branch. A branch named like a release (release-1.2.0)
+// reads as a tag: a static scan cannot tell the two apart.
+func TagVersion(ref string) (prefix, version string, ok bool) {
+	m := tagRe.FindStringSubmatch(strings.TrimSpace(ref))
+	if m == nil {
+		return "", "", false
+	}
+	version = m[2]
+	if strings.HasPrefix(version, "V") {
+		version = "v" + version[1:]
+	}
+	return m[1], version, true
 }

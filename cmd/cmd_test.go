@@ -897,3 +897,28 @@ func TestBinaryInWorkingDirIsNotConfig(t *testing.T) {
 		t.Errorf("tfmetrics.yml in the working directory was not used: %v", err)
 	}
 }
+
+func TestScanWriteErrorFails(t *testing.T) {
+	work := sandbox(t)
+	a := simpleRepo(t, work, "one")
+	blocker := filepath.Join(work, "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := run(t, "scan", a, "--out", blocker); err == nil {
+		t.Error("want an error when the facts cannot be written")
+	}
+}
+
+func TestScanConcurrencyFlag(t *testing.T) {
+	work := sandbox(t)
+	var dirs []string
+	for _, n := range []string{"one", "two", "three"} {
+		dirs = append(dirs, simpleRepo(t, work, n))
+	}
+	_, errs := mustRun(t, append(append([]string{"scan"}, dirs...), "--out", "facts", "--concurrency", "1")...)
+	mustContain(t, "stderr", errs, "local/one", "local/two", "local/three")
+	if got := v.GetInt("scan" + app.KeyDelimiter + "concurrency"); got != 1 {
+		t.Errorf("scan.concurrency = %d, want the flag's 1", got)
+	}
+}

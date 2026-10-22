@@ -45,12 +45,13 @@ type Resolver struct {
 	Scheme string
 
 	mu       sync.Mutex
-	cache    map[string]result
+	cache    map[string]*result
 	services map[string]string
 }
 
-// result is one cached lookup.
+// result is one cached lookup; done closes once it is filled in.
 type result struct {
+	done     chan struct{}
 	versions []string
 	err      error
 }
@@ -69,28 +70,35 @@ const LookupConcurrency = 8
 // Versions returns the versions available for a module address. Addresses of
 // other kinds return nil.
 func (r *Resolver) Versions(ctx context.Context, kind, address string) ([]string, error) {
-	key := kind + " " + address
+	// Versions belong to the module, not to a subdirectory of it, so every
+	// "//subdir" of one module shares a lookup. Callers asking at the same
+	// time wait for the first one instead of repeating it.
+	module, _, _ := strings.Cut(address, "//")
+	key := kind + " " + module
 	r.mu.Lock()
 	if r.cache == nil {
-		r.cache = map[string]result{}
+		r.cache = map[string]*result{}
 	}
 	if res, ok := r.cache[key]; ok {
 		r.mu.Unlock()
-		return res.versions, res.err
+		select {
+		case <-res.done:
+			return res.versions, res.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
+	res := &result{done: make(chan struct{})}
+	r.cache[key] = res
 	r.mu.Unlock()
 
-	var res result
 	switch kind {
 	case source.KindRegistry, source.KindPrivateRegistry:
 		res.versions, res.err = r.registryVersions(ctx, address)
 	case source.KindGit:
 		res.versions, res.err = r.gitVersions(ctx, address)
 	}
-
-	r.mu.Lock()
-	r.cache[key] = res
-	r.mu.Unlock()
+	close(res.done)
 	return res.versions, res.err
 }
 
@@ -189,9 +197,26 @@ func (r *Resolver) getJSON(ctx context.Context, host, u string, v any) error {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("GET %s: %s: %s", u, resp.Status, strings.TrimSpace(string(b)))
+		if detail := errorDetail(resp.Header.Get("Content-Type"), b); detail != "" {
+			return fmt.Errorf("GET %s: %s: %s", u, resp.Status, detail)
+		}
+		return fmt.Errorf("GET %s: %s", u, resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// errorDetail returns an error response body worth showing: JSON or plain
+// text, on one line and at most 200 bytes. HTML pages, such as a web server's
+// 404 page on a host that is not a registry, say nothing useful.
+func errorDetail(contentType string, body []byte) string {
+	if strings.Contains(contentType, "html") || bytes.HasPrefix(bytes.TrimSpace(body), []byte("<")) {
+		return ""
+	}
+	s := strings.Join(strings.Fields(string(body)), " ")
+	if len(s) > 200 {
+		s = strings.ToValidUTF8(s[:200], "") + "..."
+	}
+	return s
 }
 
 // gitVersions lists the semver-looking tags of a git address.

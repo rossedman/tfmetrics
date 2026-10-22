@@ -44,7 +44,7 @@ These functions parse untrusted input, transform data, or run once per repo, mod
 
 | Function | Why it is critical | Benchmark | Fuzz |
 | --- | --- | --- | --- |
-| `source.Normalizer.Classify`, `source.Pinning` | Parse every module source string as written in someone's repo | yes | yes |
+| `source.Normalizer.Classify`, `source.Pinning`, `source.TagVersion` | Parse every module source string and git ref as written in someone's repo | yes | yes |
 | `parse.Module` | Parses arbitrary HCL and JSON from every module directory | yes | yes |
 | `classify.FindModuleDirs` | Walks every file of every cloned repo | yes | |
 | `owners.FromCodeowners` | Parses CODEOWNERS files from every repo | yes | yes |

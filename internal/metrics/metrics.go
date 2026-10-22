@@ -269,15 +269,33 @@ func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int,
 		}
 		return 0, false
 	}
+	constraint := c.Version
+	if prefix, version, ok := source.TagVersion(c.Version); ok && c.SourceKind == source.KindGit {
+		// Compare a tag only with the tags of its own component.
+		raw = componentTags(raw, prefix)
+		constraint = version
+	}
 	avail := versions.Parse(raw)
 	if len(avail) == 0 {
 		return 0, false
 	}
-	pinned := versions.Selected(c.Version, avail)
+	pinned := versions.Selected(constraint, avail)
 	if pinned == nil {
 		return 0, false
 	}
 	return versions.Behind(pinned, avail), true
+}
+
+// componentTags returns the versions of the tags that carry prefix, with the
+// prefix removed. Tags of other components, or without a version, are dropped.
+func componentTags(tags []string, prefix string) []string {
+	var out []string
+	for _, t := range tags {
+		if p, v, ok := source.TagVersion(t); ok && p == prefix {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // isSHA reports whether s looks like an abbreviated or full git commit SHA.

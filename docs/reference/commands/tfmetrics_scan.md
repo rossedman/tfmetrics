@@ -29,10 +29,11 @@ tfmetrics scan <path|repo>... [flags]
 ### Options
 
 ```
-  -h, --help           help for scan
-      --out string     directory to write facts files to (default "facts")
-      --ref string     branch, tag or commit to clone for remote repos (default: the default branch)
-      --sink strings   also aggregate and emit to these sinks: json, openmetrics, otlp, csv, parquet, markdown
+      --concurrency int   repos to clone and scan at once (default 16)
+  -h, --help              help for scan
+      --out string        directory to write facts files to (default "facts")
+      --ref string        branch, tag or commit to clone for remote repos (default: the default branch)
+      --sink strings      also aggregate and emit to these sinks: json, openmetrics, otlp, csv, parquet, markdown
 ```
 
 ### Options inherited from parent commands

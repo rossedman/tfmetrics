@@ -11,10 +11,13 @@ package ghapi
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -166,7 +169,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp, err := t.Base.RoundTrip(r)
 		t.count(func(s *Stats) { s.Requests++ })
 		if err != nil {
-			if ctx.Err() != nil || attempt >= t.MaxRetries || !canRetry(req) {
+			if ctx.Err() != nil || attempt >= t.MaxRetries || !canRetry(req) || permanent(err) {
 				return nil, err
 			}
 			if err := t.wait(ctx, "network error: "+err.Error(), t.backoff(attempt)); err != nil {
@@ -311,6 +314,22 @@ func resourceOf(req *http.Request) string {
 		return "search"
 	}
 	return "core"
+}
+
+// permanent reports whether a network error cannot succeed on retry: the
+// host does not exist, or its certificate is not trusted. Retrying those only
+// spends the backoff, which for an unreachable private registry is the whole
+// client timeout.
+func permanent(err error) bool {
+	var dns *net.DNSError
+	if errors.As(err, &dns) && dns.IsNotFound {
+		return true
+	}
+	var certInvalid x509.CertificateInvalidError
+	var unknownCA x509.UnknownAuthorityError
+	var hostname x509.HostnameError
+	var verify *tls.CertificateVerificationError
+	return errors.As(err, &certInvalid) || errors.As(err, &unknownCA) || errors.As(err, &hostname) || errors.As(err, &verify)
 }
 
 // canRetry reports whether a request can be sent again (its body, if any, can

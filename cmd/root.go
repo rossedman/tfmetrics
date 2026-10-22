@@ -38,6 +38,7 @@ Config precedence: flag > environment (TFMETRICS_*) > config file.`,
 
 // Execute runs the root command and exits non-zero on error.
 func Execute() {
+	app.TuneGC(os.Getenv)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)

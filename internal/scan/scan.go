@@ -6,7 +6,10 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rossedman/tfmetrics/internal/classify"
@@ -73,11 +76,25 @@ func Dir(ctx context.Context, root string, meta Meta, opts Options) (facts.ScanR
 		res.Properties = map[string]string{}
 	}
 	popts := parse.Options{Normalizer: opts.Normalizer, RootOverrides: opts.RootOverrides}
-	for _, d := range dirs {
-		if err := ctx.Err(); err != nil {
-			return facts.ScanResult{}, err
-		}
-		res.Modules = append(res.Modules, parse.Module(abs, d, popts))
+	res.Modules = res.Modules[:len(dirs)]
+	// Modules parse independently, so a monorepo uses every core. Each worker
+	// takes the next unparsed directory; results keep the directory order.
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(dirs)) {
+		wg.Go(func() {
+			for ctx.Err() == nil {
+				i := int(next.Add(1)) - 1
+				if i >= len(dirs) {
+					return
+				}
+				res.Modules[i] = parse.Module(abs, dirs[i], popts)
+			}
+		})
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return facts.ScanResult{}, err
 	}
 	return res, nil
 }

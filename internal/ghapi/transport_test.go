@@ -2,8 +2,11 @@ package ghapi
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -432,5 +435,47 @@ func TestHugeRetryAfterIsRefusedNotWrapped(t *testing.T) {
 		if reason == "" || d <= tr.MaxWait {
 			t.Errorf("Retry-After %s: wait %s (%q), want more than MaxWait %s so the request is refused", v, d, reason, tr.MaxWait)
 		}
+	}
+}
+
+// errRT fails every round trip with err.
+type errRT struct {
+	n   atomic.Int32
+	err error
+}
+
+func (e *errRT) RoundTrip(*http.Request) (*http.Response, error) {
+	e.n.Add(1)
+	return nil, e.err
+}
+
+func TestPermanentNetworkErrorsAreNotRetried(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		err       error
+		wantTries int32
+	}{
+		{"unknown host", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "registry.invalid", IsNotFound: true}}, 1},
+		{"untrusted certificate", &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}, 1},
+		{"wrong host certificate", x509.HostnameError{Host: "x"}, 1},
+		{"expired certificate", x509.CertificateInvalidError{Reason: x509.Expired}, 1},
+		{"dns timeout", &net.DNSError{Err: "i/o timeout", Name: "x", IsTimeout: true}, 3},
+		{"connection reset", errors.New("connection reset by peer"), 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tr := newTransport(newClock())
+			tr.MaxRetries = 2
+			rt := &errRT{err: tt.err}
+			tr.Base = rt
+			if _, err := (&http.Client{Transport: tr}).Get("https://registry.invalid/"); err == nil {
+				t.Fatal("want an error")
+			}
+			if got := rt.n.Load(); got != tt.wantTries {
+				t.Errorf("tries = %d, want %d", got, tt.wantTries)
+			}
+		})
 	}
 }

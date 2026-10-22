@@ -41,7 +41,7 @@ source:
 
 scan:
   concurrency: 16                  # repos cloned and scanned at once
-  ignore_dirs: [.terraform, examples, test]
+  ignore_dirs: [.terraform, examples, test, tests, testdata]
   cache_dir: ~/.cache/tfmetrics    # default: <user cache dir>/tfmetrics
   root_overrides: ["stacks/*"]     # directories to treat as roots regardless
   ref: ""                          # branch, tag or commit; empty = default branch
@@ -109,7 +109,7 @@ An empty `include` matches everything, and an empty `exclude` excludes nothing. 
 | Key | Default | Description |
 | --- | --- | --- |
 | `concurrency` | `16` | Repos cloned and scanned at once. |
-| `ignore_dirs` | `[.terraform, examples, test]` | Directories skipped with everything below them. A pattern without a slash matches a directory's name at any depth; one with a slash matches the path from the repo root. Patterns use Go's `path.Match` syntax. Hidden directories are always skipped. Setting this replaces the default list. |
+| `ignore_dirs` | `[.terraform, examples, test, tests, testdata]` | Directories skipped with everything below them: examples, test fixtures and test data rather than infrastructure. A pattern without a slash matches a directory's name at any depth; one with a slash matches the path from the repo root. Patterns use Go's `path.Match` syntax. Hidden directories are always skipped. Setting this replaces the default list. |
 | `cache_dir` | user cache dir + `/tfmetrics` | Where facts are cached by commit SHA. A leading `~` is expanded. |
 | `root_overrides` | empty | Directory patterns (`stacks/*`) always classified as root modules, for roots with no backend, `cloud` block or configured provider. |
 | `ref` | default branch | Branch, tag or commit to scan in every repo. |
