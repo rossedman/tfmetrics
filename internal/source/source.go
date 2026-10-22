@@ -53,20 +53,32 @@ type Ref struct {
 
 // Normalizer classifies sources using org-specific settings.
 type Normalizer struct {
-	// InternalRegistry is the host of the org's private registry, if any.
-	InternalRegistry string
-	aliases          map[string]string
+	// registries are the lower-cased hosts of the org's private registries.
+	registries map[string]bool
+	aliases    map[string]string
 }
 
-// NewNormalizer returns a Normalizer. aliases maps a source (in any form) to the
-// address it should be reported as.
-func NewNormalizer(internalRegistry string, aliases map[string]string) *Normalizer {
-	n := &Normalizer{InternalRegistry: strings.ToLower(internalRegistry), aliases: map[string]string{}}
+// NewNormalizer returns a Normalizer. registries are the hosts of the org's
+// private registries: sources on them are always registry sources, even on a
+// host such as gitlab.com that otherwise means git. aliases maps a source (in
+// any form) to the address it should be reported as.
+func NewNormalizer(registries []string, aliases map[string]string) *Normalizer {
+	n := &Normalizer{registries: map[string]bool{}, aliases: map[string]string{}}
+	for _, h := range registries {
+		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+			n.registries[h] = true
+		}
+	}
 	for from, to := range aliases {
 		r := n.classify(from)
 		n.aliases[r.Address] = to
 	}
 	return n
+}
+
+// Registry reports whether host is one of the configured private registries.
+func (n *Normalizer) Registry(host string) bool {
+	return n.registries[strings.ToLower(host)]
 }
 
 // Classify returns the kind, normalized address and git ref of a module source.
@@ -110,7 +122,7 @@ func (n *Normalizer) classify(src string) Ref {
 		}
 	}
 
-	if m := registryRe.FindStringSubmatch(s); m != nil && !looksLikeVCSHost(m[1]) {
+	if m := registryRe.FindStringSubmatch(s); m != nil && (!looksLikeVCSHost(m[1]) || n.Registry(m[1])) {
 		host := strings.ToLower(m[1])
 		kind := KindRegistry
 		if host == "" {

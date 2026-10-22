@@ -30,7 +30,7 @@ The facts file is the only thing aggregation reads. That makes the two halves in
 
 tfmetrics is deliberately narrow:
 
-- It does not run `terraform init`, `plan` or `apply`, read state, or call any cloud API. The only credentials it uses are a GitHub token and, optionally, a private registry token.
+- It does not run `terraform init`, `plan` or `apply`, read state, or call any cloud API. The only credentials it uses are a GitHub token and, optionally, a token for each private registry.
 - It does not evaluate expressions, resolve variables or download modules. Version drift uses registry and git tag listings, never the module code.
 - It is not a linter or a policy engine. The hygiene score summarizes a few structural checks; it does not judge your architecture.
 - It discovers repos from GitHub only. Other hosts work through `scan` on a clone or a git URL, or `--local-dir`.

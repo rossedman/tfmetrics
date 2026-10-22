@@ -98,5 +98,5 @@ Once the old versions are gone, stop them coming back. The [`sarif` sink](../sin
 
 - **Retiring a module.** Every caller has to move, whatever version they are on, so skip `--behind` and versions altogether: `tfmetrics who-uses github.com/acme/tf-legacy-vpc facts/ --offline` lists every call without looking anything up.
 - **Your own git modules.** Address them as `host/org/repo`, such as `github.com/acme/tf-network`. Tags like `v1.4.0` (or `tags/1.4.0`) count as versions. In a monorepo that tags each module separately (`vpc/v1.2.0`, `vpc-v1.2.0`), each module is compared only with its own tags.
-- **Private registries.** Lookups need a token: set [`modules.internal_registry` and `modules.registry_token_env`](../configuration.md#modules). Without one, `BEHIND` shows `-` for those calls.
+- **Private registries.** Lookups need a token: list each registry under [`modules.registries`](../configuration.md#modules) with its `token_env`, or set Terraform's `TF_TOKEN_<host>` variables. Without one, `BEHIND` shows `-` for those calls.
 - **One module, several spellings.** If some repos call a module by its registry address and others by its git URL, map one to the other with [`modules.aliases`](../configuration.md#modules) so `who-uses` and the metrics treat them as one module.

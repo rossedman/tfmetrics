@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -34,7 +35,8 @@ type GitTagLister func(ctx context.Context, url string) ([]string, error)
 // Resolver looks up and caches module versions.
 type Resolver struct {
 	HTTP *http.Client
-	// Tokens maps a registry host to a bearer token.
+	// Tokens maps a registry host to a bearer token. Hosts not in it use
+	// Terraform's TF_TOKEN_<host> environment variable, if set.
 	Tokens map[string]string
 	// GitToken authenticates git tag lookups against GitTokenHost.
 	GitToken     string
@@ -210,7 +212,7 @@ func (r *Resolver) getJSON(ctx context.Context, host, u string, v any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	if t := r.Tokens[host]; t != "" {
+	if t := r.token(host); t != "" {
 		req.Header.Set("Authorization", "Bearer "+t)
 	}
 	client := r.HTTP
@@ -232,6 +234,23 @@ func (r *Resolver) getJSON(ctx context.Context, host, u string, v any) error {
 		return fmt.Errorf("%s (GET %s)", resp.Status, u)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// token returns the bearer token for a registry host: the configured one, or
+// else the TF_TOKEN_<host> variable the Terraform CLI itself reads.
+func (r *Resolver) token(host string) string {
+	if t := r.Tokens[host]; t != "" {
+		return t
+	}
+	return os.Getenv(TerraformTokenEnv(host))
+}
+
+// TerraformTokenEnv returns the name of the environment variable the Terraform
+// CLI reads a host's token from: TF_TOKEN_ plus the host with "." written as
+// "_" and "-" as "__", such as TF_TOKEN_app_terraform_io.
+func TerraformTokenEnv(host string) string {
+	h := strings.ReplaceAll(strings.ToLower(host), "-", "__")
+	return "TF_TOKEN_" + strings.ReplaceAll(h, ".", "_")
 }
 
 // errorDetail returns an error response body worth showing: JSON or plain

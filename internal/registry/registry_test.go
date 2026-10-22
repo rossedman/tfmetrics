@@ -161,6 +161,57 @@ func TestPrivateRegistryBearerToken(t *testing.T) {
 	}
 }
 
+func TestEachRegistryGetsItsOwnToken(t *testing.T) {
+	t.Parallel()
+	a := newFakeRegistry(t, func(string) string { return "/v1/modules/" }, 0)
+	b := newFakeRegistry(t, func(string) string { return "/v1/modules/" }, 0)
+	r := newResolver()
+	r.Tokens = map[string]string{a.host(): "token-a", b.host(): "token-b"}
+	for _, f := range []*fakeRegistry{a, b} {
+		if _, err := r.Versions(context.Background(), source.KindPrivateRegistry, f.host()+"/acme/vpc/aws"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for f, want := range map[*fakeRegistry]string{a: "Bearer token-a", b: "Bearer token-b"} {
+		f.mu.Lock()
+		for _, got := range f.auths {
+			if got != want {
+				t.Errorf("Authorization = %q, want %q", got, want)
+			}
+		}
+		f.mu.Unlock()
+	}
+}
+
+func TestTerraformTokenEnvFallback(t *testing.T) {
+	t.Setenv("TF_TOKEN_tf_acme__corp_io", "from-env")
+	t.Setenv("TF_TOKEN_app_terraform_io", "from-env-tfc")
+	r := newResolver()
+	r.Tokens = map[string]string{"app.terraform.io": "configured"}
+	if got := r.token("tf.acme-corp.io"); got != "from-env" {
+		t.Errorf("fallback token = %q", got)
+	}
+	if got := r.token("app.terraform.io"); got != "configured" {
+		t.Errorf("configured token should win, got %q", got)
+	}
+	if got := r.token("none.example"); got != "" {
+		t.Errorf("token = %q, want empty", got)
+	}
+}
+
+func TestTerraformTokenEnv(t *testing.T) {
+	t.Parallel()
+	for host, want := range map[string]string{
+		"app.terraform.io": "TF_TOKEN_app_terraform_io",
+		"TF.Acme-Corp.io":  "TF_TOKEN_tf_acme__corp_io",
+		"gitlab.com":       "TF_TOKEN_gitlab_com",
+	} {
+		if got := TerraformTokenEnv(host); got != want {
+			t.Errorf("TerraformTokenEnv(%q) = %q, want %q", host, got, want)
+		}
+	}
+}
+
 func TestNoTokenNoAuthHeader(t *testing.T) {
 	t.Parallel()
 	f := newFakeRegistry(t, func(string) string { return "/v1/modules/" }, 0)

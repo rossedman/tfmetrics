@@ -74,9 +74,43 @@ type Scan struct {
 
 // Modules configures module source normalization and version lookups.
 type Modules struct {
+	// InternalRegistry and RegistryTokenEnv configure one private registry.
+	// They predate Registries and are treated as one more entry of it.
 	InternalRegistry string            `mapstructure:"internal_registry"`
 	RegistryTokenEnv string            `mapstructure:"registry_token_env"`
+	Registries       []Registry        `mapstructure:"registries"`
 	Aliases          map[string]string `mapstructure:"aliases"`
+}
+
+// Registry is one private module registry and where its token comes from.
+type Registry struct {
+	Host     string `mapstructure:"host"`
+	TokenEnv string `mapstructure:"token_env"`
+}
+
+// AllRegistries returns Registries plus the internal_registry entry, if set,
+// with hosts trimmed and lower-cased. An explicit Registries entry for the
+// same host wins over internal_registry.
+func (m Modules) AllRegistries() []Registry {
+	var out []Registry
+	seen := map[string]bool{}
+	for _, r := range m.Registries {
+		h := normalizeHost(r.Host)
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, Registry{Host: h, TokenEnv: strings.TrimSpace(r.TokenEnv)})
+	}
+	if h := normalizeHost(m.InternalRegistry); h != "" && !seen[h] {
+		out = append(out, Registry{Host: h, TokenEnv: strings.TrimSpace(m.RegistryTokenEnv)})
+	}
+	return out
+}
+
+// normalizeHost trims and lower-cases a registry host.
+func normalizeHost(h string) string {
+	return strings.ToLower(strings.TrimSpace(h))
 }
 
 // Labels configures extra metric labels.
@@ -146,6 +180,19 @@ func (c Config) Validate() error {
 		if _, ok := DefaultWeights[k]; !ok {
 			return fmt.Errorf("hygiene.weights: unknown key %q", k)
 		}
+	}
+	seen := map[string]bool{}
+	for i, r := range c.Modules.Registries {
+		h := normalizeHost(r.Host)
+		switch {
+		case h == "":
+			return fmt.Errorf("modules.registries[%d]: host is required", i)
+		case strings.ContainsAny(h, "/ "):
+			return fmt.Errorf("modules.registries[%d]: host %q must be a bare host such as app.terraform.io, without a scheme or path", i, r.Host)
+		case seen[h]:
+			return fmt.Errorf("modules.registries[%d]: host %q is listed twice", i, r.Host)
+		}
+		seen[h] = true
 	}
 	for i, o := range c.Source.GitHub.Orgs {
 		if strings.TrimSpace(o.Name) == "" {

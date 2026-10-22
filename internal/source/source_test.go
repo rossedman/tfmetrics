@@ -8,7 +8,7 @@ import (
 
 func TestClassify(t *testing.T) {
 	t.Parallel()
-	n := NewNormalizer("tf.internal.acme.io", nil)
+	n := NewNormalizer([]string{"tf.internal.acme.io"}, nil)
 	tests := []struct {
 		name string
 		src  string
@@ -75,7 +75,7 @@ func TestClassify(t *testing.T) {
 func TestClassifyGitHubWithSubpathIsNotRegistry(t *testing.T) {
 	t.Parallel()
 	// github.com/org/repo/x matches the registry shape but is a git shorthand.
-	got := NewNormalizer("", nil).Classify("github.com/acme/tf-iam/aws")
+	got := NewNormalizer(nil, nil).Classify("github.com/acme/tf-iam/aws")
 	if got.Kind != KindGit {
 		t.Errorf("Kind = %q, want git", got.Kind)
 	}
@@ -83,7 +83,7 @@ func TestClassifyGitHubWithSubpathIsNotRegistry(t *testing.T) {
 
 func TestAliases(t *testing.T) {
 	t.Parallel()
-	n := NewNormalizer("tf.acme.io", map[string]string{
+	n := NewNormalizer([]string{"tf.acme.io"}, map[string]string{
 		"git::https://github.com/acme/tf-vpc.git": "tf.acme.io/platform/vpc/aws",
 		"git@github.com:acme/tf-eks.git":          "app.terraform.io/acme/eks/aws",
 		"https://example.com/old.zip":             "tf.acme.io/platform/old/aws",
@@ -114,10 +114,33 @@ func TestAliases(t *testing.T) {
 	}
 }
 
-func TestInternalRegistryLowercased(t *testing.T) {
+func TestRegistryHostsLowercased(t *testing.T) {
 	t.Parallel()
-	if got := NewNormalizer("TF.Acme.IO", nil).InternalRegistry; got != "tf.acme.io" {
-		t.Errorf("InternalRegistry = %q", got)
+	n := NewNormalizer([]string{"TF.Acme.IO", " gitlab.com ", ""}, nil)
+	if !n.Registry("tf.acme.io") || !n.Registry("GitLab.com") || n.Registry("") || n.Registry("github.com") {
+		t.Errorf("registries = %v", n.registries)
+	}
+}
+
+func TestConfiguredRegistryOnVCSHost(t *testing.T) {
+	t.Parallel()
+	// gitlab.com hosts a module registry; listing it makes its sources
+	// registry sources instead of git shorthand.
+	src := "gitlab.com/acme/vpc/aws"
+	if got := NewNormalizer(nil, nil).Classify(src); got.Kind == KindPrivateRegistry {
+		t.Errorf("unlisted gitlab.com classified as %+v", got)
+	}
+	n := NewNormalizer([]string{"tf.acme.io", "gitlab.com"}, nil)
+	want := Ref{Kind: KindPrivateRegistry, Address: "gitlab.com/acme/vpc/aws"}
+	if got := n.Classify(src); got != want {
+		t.Errorf("Classify(%q) = %+v, want %+v", src, got, want)
+	}
+	if got := n.Classify("tf.acme.io/acme/eks/aws"); got.Kind != KindPrivateRegistry {
+		t.Errorf("second registry = %+v", got)
+	}
+	// github.com is not listed, so its shorthand is still git.
+	if got := n.Classify("github.com/acme/tf-iam/aws"); got.Kind != KindGit {
+		t.Errorf("github shorthand = %+v", got)
 	}
 }
 
@@ -224,7 +247,7 @@ func FuzzClassify(f *testing.F) {
 	for _, s := range classifySeeds {
 		f.Add(s)
 	}
-	n := NewNormalizer("tf.internal.acme.io", map[string]string{"github.com/acme/tf-iam": "tf.internal.acme.io/acme/iam/aws"})
+	n := NewNormalizer([]string{"tf.internal.acme.io"}, map[string]string{"github.com/acme/tf-iam": "tf.internal.acme.io/acme/iam/aws"})
 	f.Fuzz(func(t *testing.T, src string) {
 		r := n.Classify(src)
 		if !kinds[r.Kind] {
@@ -305,7 +328,7 @@ func FuzzPinning(f *testing.F) {
 }
 
 func BenchmarkClassify(b *testing.B) {
-	n := NewNormalizer("tf.internal.acme.io", nil)
+	n := NewNormalizer([]string{"tf.internal.acme.io"}, nil)
 	b.ReportAllocs()
 	for b.Loop() {
 		for _, s := range classifySeeds {
@@ -315,7 +338,7 @@ func BenchmarkClassify(b *testing.B) {
 }
 
 func BenchmarkClassifyGit(b *testing.B) {
-	n := NewNormalizer("", nil)
+	n := NewNormalizer(nil, nil)
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = n.Classify("git::https://github.com/acme/tf-dns.git?ref=v1.4.0")
