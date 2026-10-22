@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,6 +20,7 @@ import (
 	"github.com/rossedman/tfmetrics/internal/filter"
 	"github.com/rossedman/tfmetrics/internal/pipeline"
 	"github.com/rossedman/tfmetrics/internal/sink"
+	"github.com/rossedman/tfmetrics/internal/ui"
 )
 
 var orgCmd = &cobra.Command{
@@ -85,7 +86,12 @@ calling GitHub.`,
 			c.Dir = ""
 		}
 		stderr := cmd.ErrOrStderr()
-		var progressMu sync.Mutex // the pipeline calls Progress from many goroutines
+		lv := live(cmd)
+		start := time.Now()
+		tr := ui.NewTracker(stderr, ui.Options{
+			Title: fmt.Sprintf("Scanning %s %s in %s", ui.Count(len(repos)), plural(len(repos), "repo"), orgNames(orgs)),
+			Total: len(repos), Noun: "repos", Live: lv,
+		})
 		sum := pipeline.Run(ctx, repos, pipeline.Options{
 			OutDir:      out,
 			Concurrency: cfg.Scan.Concurrency,
@@ -95,21 +101,29 @@ calling GitHub.`,
 			Scan:        app.ScanOptions(cfg),
 			Settings:    app.Settings(cfg, version),
 			Progress: func(repo string, cached bool, err error) {
-				progressMu.Lock()
-				defer progressMu.Unlock()
 				switch {
+				case err != nil && ctx.Err() != nil:
+					// cut short by the interrupt, not a failure of its own
 				case err != nil:
-					fmt.Fprintf(stderr, "error   %s: %v\n", repo, err)
+					tr.Done(ui.Event{Name: repo, Status: ui.Failed, Err: err, Plain: fmt.Sprintf("error   %s: %v", repo, err)})
 				case cached:
-					fmt.Fprintf(stderr, "cached  %s\n", repo)
+					tr.Done(ui.Event{Name: repo, Status: ui.Cached, Plain: "cached  " + repo})
 				default:
-					fmt.Fprintf(stderr, "scanned %s\n", repo)
+					tr.Done(ui.Event{Name: repo, Plain: "scanned " + repo})
 				}
 			},
 		})
-		fmt.Fprintf(stderr, "%d repos: %d scanned, %d from cache, %d failed -> %s\n",
-			len(repos), sum.Scanned, sum.Cached, len(sum.Failed), out)
-		fmt.Fprintln(stderr, app.RunStats(sum, gh))
+		tr.Close()
+		if err := ctx.Err(); err != nil {
+			finished := sum.Scanned + sum.Cached
+			_ = ui.Line(stderr, lv,
+				ui.Warn.Render(fmt.Sprintf("%s Interrupted after %s of %s repos", ui.IconWarn, ui.Count(finished), ui.Count(len(repos)))),
+				fmt.Sprintf("interrupted after %d of %d repos", finished, len(repos)))
+			return err
+		}
+		if err := printRunSummary(stderr, lv, sum, gh, len(repos), out, time.Since(start)); err != nil {
+			return err
+		}
 		if len(sum.Failed) > 0 && len(sum.Failed) == len(repos) {
 			return fmt.Errorf("every repo failed to scan")
 		}
@@ -129,8 +143,14 @@ calling GitHub.`,
 		if err != nil {
 			return err
 		}
-		m := app.Aggregate(ctx, cfg, results, app.Resolver(cfg), stderr)
-		return app.Emit(ctx, specs, sink.Env{OutDir: out, Weights: cfg.Hygiene.Weights, Stdout: cmd.OutOrStdout()}, results, m)
+		m := aggregate(cmd, cfg, results, app.Resolver(cfg))
+		if err := app.Emit(ctx, specs, sink.Env{OutDir: out, Weights: cfg.Hygiene.Weights, Stdout: cmd.OutOrStdout()}, results, m); err != nil {
+			return err
+		}
+		if !lv {
+			return nil // the plain run summary above already said where the facts went
+		}
+		return printAggregated(cmd, true, len(results), m, specs)
 	},
 }
 
@@ -141,21 +161,70 @@ func discoverGitHub(cmd *cobra.Command, cfg config.Config, orgs []config.Org, to
 	if err != nil {
 		return nil, nil, err
 	}
-	stderr := cmd.ErrOrStderr()
+	lv := live(cmd)
+	start := time.Now()
+	tr := ui.NewTracker(cmd.ErrOrStderr(), ui.Options{Title: "Discovering repos in " + orgNames(orgs), Live: lv})
 	gh.Transport.MaxRetries = cfg.Source.GitHub.MaxRetries
-	gh.Transport.OnWait = func(reason string, d time.Duration) {
-		fmt.Fprintf(stderr, "github api: %s; waiting %s\n", reason, d.Round(time.Second))
-	}
-	gh.OnWarning = func(msg string) { fmt.Fprintln(stderr, "warning:", msg) }
+	gh.Transport.OnWait = func(reason string, d time.Duration) { tr.Wait("github api: "+reason, d) }
+	gh.OnWarning = tr.Warn
 	var repos []discover.Repo
 	for _, o := range orgs {
 		found, err := gh.Org(cmd.Context(), o, cfg.Source.GitHub.Defaults)
 		if err != nil {
+			tr.Close()
 			return nil, nil, err
 		}
 		repos = append(repos, found...)
 	}
-	return repos, gh, nil
+	tr.Close()
+	if lv {
+		err = ui.Line(cmd.ErrOrStderr(), true, fmt.Sprintf("%s Found %s %s in %s %s",
+			ui.OK.Render(ui.IconOK), ui.Bold.Render(ui.Count(len(repos))), plural(len(repos), "repo"),
+			orgNames(orgs), ui.Subtle.Render("in "+ui.Duration(time.Since(start)))), "")
+	}
+	return repos, gh, err
+}
+
+// orgNames lists the orgs being scanned: "acme, acme-labs".
+func orgNames(orgs []config.Org) string {
+	names := make([]string, len(orgs))
+	for i, o := range orgs {
+		names[i] = o.Name
+	}
+	return strings.Join(names, ", ")
+}
+
+// printRunSummary reports how a scan of total repos went: a styled summary on
+// a live terminal, the plain counts and timings otherwise.
+func printRunSummary(w io.Writer, lv bool, sum pipeline.Summary, gh *discover.GitHub, total int, out string, took time.Duration) error {
+	stats := app.RunStats(sum, gh)
+	if !lv {
+		_, err := fmt.Fprintf(w, "%d repos: %d scanned, %d from cache, %d failed -> %s\n%s\n",
+			total, sum.Scanned, sum.Cached, len(sum.Failed), out, stats)
+		return err
+	}
+	icon, verb := ui.OK.Render(ui.IconOK), "Scanned"
+	if len(sum.Failed) > 0 {
+		icon = ui.Warn.Render(ui.IconWarn)
+	}
+	if len(sum.Failed) == total && total > 0 {
+		icon, verb = ui.Err.Render(ui.IconErr), "Failed to scan"
+	}
+	counts := []string{
+		ui.OK.Render(fmt.Sprintf("%s scanned", ui.Count(sum.Scanned))),
+		ui.Subtle.Render(fmt.Sprintf("%s from cache", ui.Count(sum.Cached))),
+	}
+	if len(sum.Failed) > 0 {
+		counts = append(counts, ui.Err.Render(fmt.Sprintf("%s failed", ui.Count(len(sum.Failed)))))
+	}
+	lines := []string{
+		fmt.Sprintf("%s %s %s %s in %s %s", icon, verb, ui.Bold.Render(ui.Count(total)), plural(total, "repo"), ui.Duration(took), ui.Subtle.Render("→ "+out)),
+		"  " + strings.Join(counts, ui.Subtle.Render(" · ")),
+	}
+	for _, l := range strings.Split(stats, "\n") {
+		lines = append(lines, "  "+ui.Subtle.Render(l))
+	}
+	return ui.Line(w, true, strings.Join(lines, "\n"), "")
 }
 
 // orgsFromFlags applies --org and the filter flags to the configured orgs.

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,8 @@ func TestGoldenFixture(t *testing.T) {
 	}{
 		{"text", "acme-infra.txt", func(b *bytes.Buffer) error { return Text(b, r, nil) }},
 		{"markdown", "acme-infra.md", func(b *bytes.Buffer) error { return Markdown(b, r, nil) }},
+		{"pretty", "acme-infra-pretty.txt", func(b *bytes.Buffer) error { return Pretty(b, r, nil, 0) }},
+		{"pretty narrow", "acme-infra-pretty-80.txt", func(b *bytes.Buffer) error { return Pretty(b, r, nil, 80) }},
 		{"text custom weights", "acme-infra-weights.txt", func(b *bytes.Buffer) error {
 			return Text(b, r, map[string]float64{"pinned": 1, "parse_clean": 1})
 		}},
@@ -264,3 +267,50 @@ func TestWriteErrors(t *testing.T) {
 type countWriter struct{ writes int }
 
 func (c *countWriter) Write(p []byte) (int, error) { c.writes++; return len(p), nil }
+
+func TestFitColumns(t *testing.T) {
+	t.Parallel()
+	headers := []string{"Address", "Kind", "In"}
+	rows := [][]string{
+		{"registry.terraform.io/terraform-aws-modules/eks/aws", "registry", "infra/aws/prod/cluster"},
+		{"x", "git", "y"},
+	}
+	if got := fitColumns(headers, rows, 0); !slices.Equal(got, []int{51, 8, 22}) {
+		t.Errorf("no limit = %v", got)
+	}
+	// 60 cells leave 60-1-9 = 50 for content: the widest column gives way
+	// first, and the short Kind column keeps its width.
+	got := fitColumns(headers, rows, 60)
+	if !slices.Equal(got, []int{21, 8, 21}) {
+		t.Errorf("width 60 = %v", got)
+	}
+	// Too narrow for anything: every column stops at its floor.
+	if got := fitColumns(headers, rows, 10); !slices.Equal(got, []int{8, 8, 8}) {
+		t.Errorf("width 10 = %v", got)
+	}
+}
+
+func TestPrettyMarksPinningAndDiagnostics(t *testing.T) {
+	t.Parallel()
+	r := facts.ScanResult{Repo: "acme/x", Modules: []facts.ModuleFacts{{
+		Path: ".", Kind: facts.KindRoot,
+		ModuleCalls: []facts.ModuleCall{
+			{Name: "a", SourceKind: source.KindRegistry, Address: "r/a", Version: "1.0.0", Pinned: facts.PinnedExact},
+			{Name: "b", SourceKind: source.KindGit, Address: "g/b", Version: "main", Pinned: facts.PinnedRange},
+			{Name: "c", SourceKind: source.KindGit, Address: "g/c", Pinned: facts.PinnedNone},
+		},
+		Diagnostics: []facts.Diagnostic{
+			{Severity: facts.SeverityError, Summary: "Duplicate resource", File: "main.tf", Line: 3},
+			{Severity: facts.SeverityWarning, Summary: "OpenTofu file not parsed", File: "x.tofu"},
+		},
+	}}}
+	var b bytes.Buffer
+	if err := Pretty(&b, r, nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"not a git checkout", "✗ Duplicate resource  main.tf:3", "! OpenTofu file not parsed  x.tofu", "│ exact", "│ range", "│ none"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("missing %q in:\n%s", want, b.String())
+		}
+	}
+}

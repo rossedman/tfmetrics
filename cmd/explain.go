@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/rossedman/tfmetrics/internal/app"
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/report"
+	"github.com/rossedman/tfmetrics/internal/ui"
 )
 
 var explainCmd = &cobra.Command{
@@ -30,13 +32,20 @@ diagnostics.`,
 		}
 		format, _ := cmd.Flags().GetString("format")
 		w := cmd.OutOrStdout()
+		text := report.Text
+		if !plain && interactive(w) {
+			width := ui.Width(w)
+			text = func(w io.Writer, r facts.ScanResult, weights map[string]float64) error {
+				return report.Pretty(w, r, weights, width)
+			}
+		}
 		for i, r := range results {
 			if i > 0 && format == "text" {
 				fmt.Fprintln(w)
 			}
 			switch format {
 			case "text":
-				err = report.Text(w, r, cfg.Hygiene.Weights)
+				err = text(w, r, cfg.Hygiene.Weights)
 			case "markdown":
 				err = report.Markdown(w, r, cfg.Hygiene.Weights)
 			default:

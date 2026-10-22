@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,10 +15,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	"github.com/rossedman/tfmetrics/internal/app"
+	"github.com/rossedman/tfmetrics/internal/config"
 	"github.com/rossedman/tfmetrics/internal/facts"
 )
 
@@ -920,5 +925,154 @@ func TestScanConcurrencyFlag(t *testing.T) {
 	mustContain(t, "stderr", errs, "local/one", "local/two", "local/three")
 	if got := v.GetInt("scan" + app.KeyDelimiter + "concurrency"); got != 1 {
 		t.Errorf("scan.concurrency = %d, want the flag's 1", got)
+	}
+}
+
+// withLive makes commands treat their output buffers as terminals.
+func withLive(t *testing.T) {
+	t.Helper()
+	old := interactive
+	interactive = func(io.Writer) bool { return true }
+	t.Cleanup(func() { interactive = old })
+}
+
+func TestLiveOutput(t *testing.T) {
+	work := sandbox(t)
+	withLive(t)
+	a := simpleRepo(t, work, "one")
+	missing := "file://" + filepath.Join(work, "missing.git")
+	_, errs, err := run(t, "scan", a, missing, "--out", "facts")
+	if err == nil {
+		t.Error("a failed repo still fails the command")
+	}
+	errs = ansi.Strip(errs)
+	mustContain(t, "scan", errs, "✓ local/one  1 module", "✗ "+missing+"  git clone", "Scanned 1 repo (1 module)", "1 failed")
+	if strings.Contains(errs, "scanned local/one:") {
+		t.Errorf("plain line in live output:\n%s", errs)
+	}
+
+	clones := localClones(t, work, "tf-net", "tf-app")
+	_, errs = mustRun(t, "org", "--local-dir", clones, "--org", "acme", "--out", "facts", "--cache-dir", filepath.Join(work, "cd"), "--sink", "json")
+	errs = ansi.Strip(errs)
+	mustContain(t, "org", errs, "Scanned 2 repos in", "2 scanned · 0 from cache", "Aggregated 3 repos (3 with Terraform)", "→ json")
+
+	_, errs = mustRun(t, "aggregate", "facts", "--offline", "--out", "m")
+	mustContain(t, "aggregate", errs, "✓ Aggregated 3 repos")
+
+	out, _ := mustRun(t, "explain", filepath.Join("facts", "acme__tf-net.json"))
+	mustContain(t, "explain", out, "acme/tf-net @", "Hygiene", "╭")
+
+	// --plain keeps the line-by-line output even on a terminal.
+	_, errs = mustRun(t, "--plain", "scan", a, "--out", "facts")
+	mustContain(t, "plain scan", errs, "scanned local/one: 1 modules ->")
+	out, _ = mustRun(t, "--plain", "explain", filepath.Join("facts", "acme__tf-net.json"))
+	mustContain(t, "plain explain", out, "hygiene score")
+}
+
+func TestLiveOrgFailures(t *testing.T) {
+	work := sandbox(t)
+	withLive(t)
+	clones := localClones(t, work, "tf-net", "broken")
+	// Caching fails for one repo: its cache entry is a file, not a directory.
+	cacheDir := filepath.Join(work, "cd")
+	writeFile(t, filepath.Join(cacheDir, "acme__broken"), "not a directory")
+	_, errs, err := run(t, "org", "--local-dir", clones, "--org", "acme", "--out", "facts", "--cache-dir", cacheDir)
+	if err != nil {
+		t.Fatalf("one failure out of two does not fail the run: %v\n%s", err, errs)
+	}
+	mustContain(t, "org", ansi.Strip(errs), "✗ acme/broken", "! Scanned 2 repos", "1 failed")
+}
+
+func TestLiveOrgDiscovery(t *testing.T) {
+	work := sandbox(t)
+	withLive(t)
+	srv := fakeGitHub(t, `[{"name":"tf-net","full_name":"acme/tf-net","clone_url":"https://example.invalid/acme/tf-net.git"}]`, http.StatusOK)
+	writeFile(t, filepath.Join(work, "gh.yaml"), fmt.Sprintf("source:\n  github:\n    base_url: %s\n", srv.URL))
+	_, errs := mustRun(t, "org", "--config", "gh.yaml", "--org", "acme", "--dry-run")
+	mustContain(t, "discovery", ansi.Strip(errs), "✓ Found 1 repo in acme")
+}
+
+// fakeVersions answers version lookups from a map.
+type fakeVersions map[string][]string
+
+func (f fakeVersions) Versions(_ context.Context, _, addr string) ([]string, error) {
+	if v, ok := f[addr]; ok {
+		return v, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func TestAggregateLookupProgress(t *testing.T) {
+	work := sandbox(t)
+	results, err := facts.ReadAll([]string{scanFixture(t, work)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lister := fakeVersions{"registry.terraform.io/terraform-aws-modules/eks/aws": {"17.24.0", "19.21.0", "20.0.0"}}
+	for _, lv := range []bool{false, true} {
+		var errb bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetErr(&errb)
+		cmd.SetContext(context.Background())
+		old := interactive
+		interactive = func(io.Writer) bool { return lv }
+		m := aggregate(cmd, config.Default(), results, lister)
+		interactive = old
+		if m.Repos != 1 {
+			t.Errorf("repos = %d", m.Repos)
+		}
+		want := "warning: version lookup for github.com/acme/tf-dns: not found"
+		if lv {
+			want = "! version lookup for github.com/acme/tf-dns: not found"
+		}
+		mustContain(t, fmt.Sprintf("live=%v", lv), ansi.Strip(errb.String()), want)
+	}
+}
+
+func TestPrintError(t *testing.T) {
+	var b bytes.Buffer
+	printError(&b, errors.New("boom"))
+	if b.String() != "error: boom\n" {
+		t.Errorf("plain = %q", b.String())
+	}
+	withLive(t)
+	b.Reset()
+	printError(&b, errors.New("boom"))
+	if b.String() != "✗ error: boom\n" {
+		t.Errorf("live = %q", b.String())
+	}
+}
+
+func TestInterruptedRunsStopWithoutFailures(t *testing.T) {
+	work := sandbox(t)
+	a := simpleRepo(t, work, "one")
+	clones := localClones(t, work, "tf-net")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, tc := range []struct {
+		cmd  *cobra.Command
+		args []string
+	}{
+		{scanCmd, []string{"scan", a, "--out", "facts"}},
+		{orgCmd, []string{"org", "--local-dir", clones, "--org", "acme", "--out", "facts", "--cache-dir", filepath.Join(work, "cd")}},
+	} {
+		args := tc.args
+		reset()
+		// Cobra hands the root's context only to a subcommand that has none,
+		// and earlier tests in this process gave each one a context.
+		tc.cmd.SetContext(ctx)
+		t.Cleanup(func() { tc.cmd.SetContext(context.Background()) })
+		var errb bytes.Buffer
+		rootCmd.SetOut(io.Discard)
+		rootCmd.SetErr(&errb)
+		rootCmd.SetArgs(args)
+		err := rootCmd.ExecuteContext(ctx)
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("%s: err = %v, want context.Canceled", args[0], err)
+		}
+		mustContain(t, args[0], errb.String(), "interrupted after 0 of 1 repos")
+		if strings.Contains(errb.String(), "error") {
+			t.Errorf("%s: interrupted repos reported as failures:\n%s", args[0], errb.String())
+		}
 	}
 }

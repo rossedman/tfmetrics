@@ -56,7 +56,7 @@ func TestPrefetchLooksUpEachAddressOnceInParallel(t *testing.T) {
 	}
 	results := []facts.ScanResult{{Modules: []facts.ModuleFacts{{ModuleCalls: calls}}}}
 	l := &slowLister{}
-	Prefetch(context.Background(), results, l, 4)
+	Prefetch(context.Background(), results, l, 4, nil)
 	sort.Strings(l.calls)
 	if len(l.calls) != 11 {
 		t.Fatalf("calls = %v, want 11 distinct lookups", l.calls)
@@ -73,14 +73,14 @@ func TestPrefetchLooksUpEachAddressOnceInParallel(t *testing.T) {
 
 func TestPrefetchNilListerAndCancel(t *testing.T) {
 	t.Parallel()
-	Prefetch(context.Background(), nil, nil, 4)
+	Prefetch(context.Background(), nil, nil, 4, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	l := &slowLister{}
 	results := []facts.ScanResult{{Modules: []facts.ModuleFacts{{ModuleCalls: []facts.ModuleCall{
 		{SourceKind: source.KindRegistry, Address: "r/a/b/c", Version: "1.0.0"},
 	}}}}}
-	Prefetch(ctx, results, l, 0)
+	Prefetch(ctx, results, l, 0, nil)
 	if len(l.calls) != 0 {
 		t.Errorf("cancelled prefetch made calls: %v", l.calls)
 	}
