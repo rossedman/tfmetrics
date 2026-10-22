@@ -26,3 +26,5 @@ Config precedence: flag > environment (TFMETRICS_*) > config file.
 * [tfmetrics scan](tfmetrics_scan.md)	 - Parse repos into facts JSON
 * [tfmetrics version](tfmetrics_version.md)	 - Print the version, commit and build date
 
+
+Every key the config file accepts, and which flag or environment variable overrides it, is in the [config file reference](../config.md).

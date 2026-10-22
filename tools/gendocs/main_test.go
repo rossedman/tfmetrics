@@ -34,6 +34,36 @@ func TestGenerateWritesOnePagePerCommand(t *testing.T) {
 	if !strings.Contains(string(scan), "--sink") || !strings.Contains(string(scan), "[tfmetrics](tfmetrics.md)") {
 		t.Errorf("scan page lacks flags or link:\n%s", scan)
 	}
+	if !strings.HasSuffix(string(scan), configNote) {
+		t.Errorf("scan page lacks the config reference link:\n%s", scan)
+	}
+}
+
+func TestLinkConfig(t *testing.T) {
+	dir := t.TempDir()
+	with, without := filepath.Join(dir, "a.md"), filepath.Join(dir, "b.md")
+	if err := os.WriteFile(with, []byte("  --config string\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(without, []byte("no flags\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := linkConfig(dir); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(with); !strings.HasSuffix(string(b), configNote) {
+		t.Errorf("page with --config not linked: %q", b)
+	}
+	if b, _ := os.ReadFile(without); string(b) != "no flags\n" {
+		t.Errorf("page without --config changed: %q", b)
+	}
+	// A directory named like a page cannot be read.
+	if err := os.Mkdir(filepath.Join(dir, "c.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := linkConfig(dir); err == nil {
+		t.Error("want error when a page cannot be read")
+	}
 }
 
 func TestGenerateClearsStalePagesOnly(t *testing.T) {

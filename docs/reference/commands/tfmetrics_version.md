@@ -22,3 +22,5 @@ tfmetrics version [flags]
 
 * [tfmetrics](tfmetrics.md)	 - Org-wide Terraform metrics from static parsing
 
+
+Every key the config file accepts, and which flag or environment variable overrides it, is in the [config file reference](../config.md).

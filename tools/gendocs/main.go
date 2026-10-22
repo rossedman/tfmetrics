@@ -40,5 +40,29 @@ func generate(dir string) error {
 	root.DisableAutoGenTag = true
 	prepend := func(string) string { return "" }
 	link := func(name string) string { return strings.ToLower(name) }
-	return doc.GenMarkdownTreeCustom(root, dir, prepend, link)
+	if err := doc.GenMarkdownTreeCustom(root, dir, prepend, link); err != nil {
+		return err
+	}
+	return linkConfig(dir)
+}
+
+// configNote is appended to every page that shows the --config flag.
+const configNote = "\nEvery key the config file accepts, and which flag or environment variable overrides it, is in the [config file reference](../config.md).\n"
+
+// linkConfig appends configNote to each page in dir that mentions --config.
+func linkConfig(dir string) error {
+	pages, _ := filepath.Glob(filepath.Join(dir, "*.md"))
+	for _, p := range pages {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(b), "--config") {
+			continue
+		}
+		if err := os.WriteFile(p, append(b, configNote...), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

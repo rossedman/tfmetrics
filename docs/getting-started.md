@@ -139,6 +139,6 @@ Drop `--offline` to look up each module's available versions and add `tf_module_
 
 ## Next steps
 
-- Scan a whole org: set `source.github.orgs` in [the config](configuration.md) and run `tfmetrics org`, or follow [Nightly org scan](guides/nightly-org-scan.md).
+- Scan a whole org: set `source.github.orgs` in [the config](configuration.md) ([every key](reference/config.md)) and run `tfmetrics org`, or follow [Nightly org scan](guides/nightly-org-scan.md).
 - Gate pull requests on one repo: [PR check](guides/pr-check.md).
 - Understand the stages: [How it works](how-it-works.md).

@@ -48,6 +48,7 @@ nav:
   - Reference:
       - Metrics catalog: reference/metrics.md
       - Facts file: reference/facts.md
+      - Config file: reference/config.md
       - Commands:
           - tfmetrics: reference/commands/tfmetrics.md
           - tfmetrics scan: reference/commands/tfmetrics_scan.md
