@@ -104,28 +104,53 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// env returns the environment for a git command against rawURL.
-func (g Git) env(cmd *exec.Cmd, rawURL string) []string {
-	env := append(cmd.Environ(), "GIT_TERMINAL_PROMPT=0")
+// env returns base plus what a git command against rawURL needs, and whether
+// it sends the token.
+func (g Git) env(base []string, rawURL string) ([]string, bool) {
+	env := append(base, "GIT_TERMINAL_PROMPT=0")
 	if g.Token == "" {
-		return env
+		return env, false
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme != "https" {
-		return env
+		return env, false
 	}
-	return append(env, registry.AuthEnv(u.Host, g.Token)...)
+	return registry.AuthEnv(env, u.Host, g.Token), true
+}
+
+// authMarkers are stderr fragments of git failures caused by rejected or
+// missing credentials.
+var authMarkers = []string{"could not read username", "authentication failed", "terminal prompts disabled"}
+
+// authFailed reports whether git's stderr says the server wanted credentials.
+func authFailed(stderr string) bool {
+	s := strings.ToLower(stderr)
+	for _, m := range authMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // run runs git and returns stdout, folding stderr into the error.
 func (g Git) run(ctx context.Context, rawURL string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = g.env(cmd, rawURL)
+	var sendsToken bool
+	cmd.Env, sendsToken = g.env(cmd.Environ(), rawURL)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", subcommand(args), err, strings.TrimSpace(stderr.String()))
+		msg := strings.TrimSpace(stderr.String())
+		if authFailed(msg) {
+			if sendsToken {
+				msg += " (the server rejected the GitHub token; check that it is valid and can read this repo)"
+			} else {
+				msg += " (the repo is private or does not exist; set a GitHub token that can read it)"
+			}
+		}
+		return nil, fmt.Errorf("git %s: %w: %s", subcommand(args), err, msg)
 	}
 	return out, nil
 }

@@ -3,6 +3,8 @@ package clone
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -267,15 +269,14 @@ func TestEnv(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			cmd := exec.Command("git")
-			base := cmd.Environ() // the process env may already carry GIT_CONFIG_*
-			env := Git{Token: tt.token}.env(cmd, tt.url)
+			base := []string{"HOME=/h"}
+			env, sends := Git{Token: tt.token}.env(base, tt.url)
 			if !slices.Contains(env, "GIT_TERMINAL_PROMPT=0") {
 				t.Error("GIT_TERMINAL_PROMPT=0 missing")
 			}
 			added := env[len(base)+1:] // after the base env and GIT_TERMINAL_PROMPT=0
-			if (len(added) > 0) != tt.wantAuth {
-				t.Fatalf("added env = %v, want auth = %v", added, tt.wantAuth)
+			if (len(added) > 0) != tt.wantAuth || sends != tt.wantAuth {
+				t.Fatalf("added env = %v, sends token = %v, want auth = %v", added, sends, tt.wantAuth)
 			}
 			if tt.wantAuth {
 				if !slices.Contains(added, tt.wantKey) {
@@ -420,5 +421,76 @@ func TestEmptyDir(t *testing.T) {
 	entries, err := os.ReadDir(dir)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("entries %v err %v", entries, err)
+	}
+}
+
+// isolateGit points git at no user or system config and no proxy, so a test
+// sees only the GIT_CONFIG_* entries it sets.
+func isolateGit(t *testing.T) {
+	t.Helper()
+	for k, v := range map[string]string{
+		"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null", "GIT_CONFIG_COUNT": "0",
+		"GIT_ASKPASS": "", "SSH_ASKPASS": "", "NO_PROXY": "*", "no_proxy": "*",
+	} {
+		t.Setenv(k, v)
+	}
+}
+
+func TestCloneWithTokenKeepsGitConfigFromEnv(t *testing.T) {
+	src := newSrcRepo(t)
+	isolateGit(t)
+	// The https URL only resolves through this insteadOf rewrite, so the clone
+	// succeeds only if the token's config entry does not replace it.
+	const alias = "https://example.invalid/acme/x.git"
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "url."+src.url+".insteadOf")
+	t.Setenv("GIT_CONFIG_VALUE_0", alias)
+	sha, err := Git{Token: "tok", Retries: -1}.Clone(context.Background(), alias, "", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sha != src.head {
+		t.Errorf("sha = %s, want %s", sha, src.head)
+	}
+}
+
+func TestCloneAuthFailureSaysWhy(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	isolateGit(t)
+	t.Setenv("GIT_SSL_NO_VERIFY", "true")
+	tests := []struct {
+		name, token, want string
+	}{
+		{"token rejected", "tok", "the server rejected the GitHub token"},
+		{"no token", "", "set a GitHub token that can read it"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Git{Token: tt.token, Retries: -1}.Clone(context.Background(), srv.URL+"/acme/x.git", "", t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want it to contain %q", err, tt.want)
+			}
+			if strings.Contains(err.Error(), "tok@") {
+				t.Errorf("token leaked: %v", err)
+			}
+		})
+	}
+}
+
+func TestAuthFailed(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]bool{
+		"fatal: could not read Username for 'https://github.com': terminal prompts disabled":   true,
+		"remote: Invalid username or password.\nfatal: Authentication failed for 'https://x/'": true,
+		"fatal: unable to access 'https://x/': Could not resolve host: x":                      false,
+		"": false,
+	} {
+		if got := authFailed(in); got != want {
+			t.Errorf("authFailed(%q) = %v, want %v", in, got, want)
+		}
 	}
 }
