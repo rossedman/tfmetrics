@@ -268,23 +268,45 @@ func TestScanRemoteFileURL(t *testing.T) {
 func TestScanErrors(t *testing.T) {
 	work := sandbox(t)
 	tests := []struct {
-		name string
-		args []string
-		want string
+		name       string
+		args       []string
+		want       string
+		wantStderr string
 	}{
-		{"no args", []string{"scan"}, "requires at least 1 arg"},
-		{"not a dir or url", []string{"scan", "nonexistent"}, "not a directory, URL or owner/name"},
-		{"unreachable url", []string{"scan", "file://" + filepath.Join(work, "missing.git")}, "git clone"},
-		{"bad sink", []string{"scan", fixtureDir, "--sink", "nope"}, `unknown sink "nope"`},
-		{"unknown flag", []string{"scan", ".", "--bogus"}, "unknown flag"},
+		{"no args", []string{"scan"}, "requires at least 1 arg", ""},
+		{"not a dir or url", []string{"scan", "nonexistent"}, "1 of 1 repos failed to scan", "error: nonexistent: not a directory, URL or owner/name"},
+		{"unreachable url", []string{"scan", "file://" + filepath.Join(work, "missing.git")}, "1 of 1 repos failed to scan", "missing.git: git clone: "},
+		{"bad sink", []string{"scan", fixtureDir, "--sink", "nope"}, `unknown sink "nope"`, ""},
+		{"unknown flag", []string{"scan", ".", "--bogus"}, "unknown flag", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := run(t, append(tt.args, "--out", filepath.Join(work, "o"))...)
+			_, errs, err := run(t, append(tt.args, "--out", filepath.Join(work, "o"))...)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want containing %q", err, tt.want)
 			}
+			if !strings.Contains(errs, tt.wantStderr) {
+				t.Errorf("stderr = %q, want containing %q", errs, tt.wantStderr)
+			}
 		})
+	}
+}
+
+func TestScanContinuesPastFailedRepo(t *testing.T) {
+	work := sandbox(t)
+	a := simpleRepo(t, work, "one")
+	b := simpleRepo(t, work, "two")
+	missing := "file://" + filepath.Join(work, "missing.git")
+	out, errs, err := run(t, "scan", a, missing, b, "--out", "facts", "--sink", "markdown")
+	if err == nil || err.Error() != "1 of 3 repos failed to scan" {
+		t.Errorf("err = %v", err)
+	}
+	mustContain(t, "stderr", errs, "scanned local/one", "error: "+missing+": git clone", "scanned local/two")
+	mustContain(t, "markdown", out, "local/one", "local/two")
+	for _, f := range []string{"facts/local__one.json", "facts/local__two.json"} {
+		if _, err := os.Stat(f); err != nil {
+			t.Error(err)
+		}
 	}
 }
 
