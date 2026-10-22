@@ -14,7 +14,7 @@ Config precedence: flag > environment (TFMETRICS_*) > config file.
 ### Options
 
 ```
-      --config string   config file (default: tfmetrics.yaml in $XDG_CONFIG_HOME/tfmetrics, $HOME or the current directory)
+      --config string   config file (default: the first tfmetrics.yaml or tfmetrics.yml in $XDG_CONFIG_HOME/tfmetrics, ~/.config/tfmetrics, $HOME, then the current directory)
   -h, --help            help for tfmetrics
 ```
 

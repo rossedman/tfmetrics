@@ -11,6 +11,9 @@ sparse checkout). Nothing is fetched beyond the clone.
 With --sink, the facts are also aggregated and emitted, which is how the
 per-repo PR check works: tfmetrics scan . --sink markdown
 
+A repo that cannot be cloned or scanned is reported and skipped; the others
+are still written and emitted, and the command exits non-zero.
+
 ```
 tfmetrics scan <path|repo>... [flags]
 ```
@@ -35,7 +38,7 @@ tfmetrics scan <path|repo>... [flags]
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default: tfmetrics.yaml in $XDG_CONFIG_HOME/tfmetrics, $HOME or the current directory)
+      --config string   config file (default: the first tfmetrics.yaml or tfmetrics.yml in $XDG_CONFIG_HOME/tfmetrics, ~/.config/tfmetrics, $HOME, then the current directory)
 ```
 
 ### SEE ALSO

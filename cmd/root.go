@@ -46,7 +46,7 @@ func Execute() {
 
 // init registers the persistent flags.
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: tfmetrics.yaml in $XDG_CONFIG_HOME/tfmetrics, $HOME or the current directory)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: the first tfmetrics.yaml or tfmetrics.yml in $XDG_CONFIG_HOME/tfmetrics, ~/.config/tfmetrics, $HOME, then the current directory)")
 }
 
 // configDirs lists where tfmetrics.yaml is looked for, in order.

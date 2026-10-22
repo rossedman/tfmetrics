@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -209,7 +210,7 @@ func (r *Resolver) lsRemoteTags(ctx context.Context, url string) ([]string, erro
 	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--tags", "--refs", url)
 	cmd.Env = append(cmd.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if r.GitToken != "" && r.GitTokenHost != "" {
-		cmd.Env = append(cmd.Env, AuthEnv(r.GitTokenHost, r.GitToken)...)
+		cmd.Env = AuthEnv(cmd.Env, r.GitTokenHost, r.GitToken)
 	}
 	out, err := cmd.Output()
 	if err != nil {
@@ -239,13 +240,23 @@ func ParseTags(out []byte) []string {
 	return tags
 }
 
-// AuthEnv returns environment variables that make git send a token to host
-// without putting it in a URL or on the command line.
-func AuthEnv(host, token string) []string {
-	cred := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
-	return []string{
-		"GIT_CONFIG_COUNT=1",
-		"GIT_CONFIG_KEY_0=http.https://" + host + "/.extraheader",
-		"GIT_CONFIG_VALUE_0=AUTHORIZATION: basic " + cred,
+// AuthEnv returns env with git config entries added that make git send a token
+// to host without putting it in a URL or on the command line. Entries already
+// in env through GIT_CONFIG_COUNT are kept: the new one is numbered after them.
+func AuthEnv(env []string, host, token string) []string {
+	n := 0
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, "GIT_CONFIG_COUNT="); ok {
+			n, _ = strconv.Atoi(v) // the last one wins, as it does for exec
+		}
 	}
+	if n < 0 {
+		n = 0
+	}
+	cred := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
+	return append(env,
+		fmt.Sprintf("GIT_CONFIG_KEY_%d=http.https://%s/.extraheader", n, host),
+		fmt.Sprintf("GIT_CONFIG_VALUE_%d=AUTHORIZATION: basic %s", n, cred),
+		fmt.Sprintf("GIT_CONFIG_COUNT=%d", n+1),
+	)
 }

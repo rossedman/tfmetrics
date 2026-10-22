@@ -433,11 +433,12 @@ func TestParseTags(t *testing.T) {
 
 func TestAuthEnv(t *testing.T) {
 	t.Parallel()
-	env := AuthEnv("github.com", "tok")
+	env := AuthEnv([]string{"HOME=/h"}, "github.com", "tok")
 	want := []string{
-		"GIT_CONFIG_COUNT=1",
+		"HOME=/h",
 		"GIT_CONFIG_KEY_0=http.https://github.com/.extraheader",
 		"GIT_CONFIG_VALUE_0=AUTHORIZATION: basic eC1hY2Nlc3MtdG9rZW46dG9r",
+		"GIT_CONFIG_COUNT=1",
 	}
 	if !slices.Equal(env, want) {
 		t.Fatalf("got %v want %v", env, want)
@@ -446,6 +447,36 @@ func TestAuthEnv(t *testing.T) {
 		if strings.Contains(e, "tok") && !strings.HasPrefix(e, "GIT_CONFIG_VALUE_0=") {
 			t.Errorf("token leaked in %q", e)
 		}
+	}
+}
+
+func TestAuthEnvKeepsExistingGitConfig(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		base    []string
+		wantIdx string
+		wantCnt string
+	}{
+		{"two entries", []string{"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=a", "GIT_CONFIG_VALUE_0=1", "GIT_CONFIG_KEY_1=b", "GIT_CONFIG_VALUE_1=2"}, "2", "3"},
+		{"last count wins", []string{"GIT_CONFIG_COUNT=5", "GIT_CONFIG_COUNT=1"}, "1", "2"},
+		{"bogus count", []string{"GIT_CONFIG_COUNT=x"}, "0", "1"},
+		{"negative count", []string{"GIT_CONFIG_COUNT=-3"}, "0", "1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			env := AuthEnv(slices.Clone(tt.base), "ghe.example.com", "tok")
+			if !slices.Equal(env[:len(tt.base)], tt.base) {
+				t.Errorf("existing entries changed: %v", env)
+			}
+			added := env[len(tt.base):]
+			if !strings.HasPrefix(added[0], "GIT_CONFIG_KEY_"+tt.wantIdx+"=http.https://ghe.example.com/") ||
+				!strings.HasPrefix(added[1], "GIT_CONFIG_VALUE_"+tt.wantIdx+"=AUTHORIZATION: basic ") ||
+				added[2] != "GIT_CONFIG_COUNT="+tt.wantCnt {
+				t.Errorf("added = %v, want index %s and count %s", added, tt.wantIdx, tt.wantCnt)
+			}
+		})
 	}
 }
 

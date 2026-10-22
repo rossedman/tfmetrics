@@ -82,7 +82,7 @@ Where repos come from. `tfmetrics org` needs at least one org here or `--org` on
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `token_env` | `GITHUB_TOKEN` | Name of the environment variable that holds a GitHub token. Used for the API, for clones and for private git module tag lookups. |
+| `token_env` | `GITHUB_TOKEN` | Name of the environment variable that holds a GitHub token. Used for the API, for clones and for private git module tag lookups. Git gets it through `GIT_CONFIG_*` environment entries added after any you already set. |
 | `base_url` | empty | API URL of a GitHub Enterprise Server, such as `https://ghe.acme.com/api/v3/`. Empty means github.com. |
 | `max_retries` | `0` (6 retries) | How often a throttled or failed API call is retried. Waits follow GitHub's rate limit policy; see [Rate limits and speed](guides/nightly-org-scan.md#rate-limits-and-speed). A negative value turns retries off. |
 | `clone_url` | `https://github.com` | Base URL that `tfmetrics scan owner/name` clones from. Org scans use the clone URL the API returns. |

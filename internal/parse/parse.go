@@ -42,6 +42,7 @@ type raw struct {
 	backend   string
 	providers map[string]bool // provider block names
 	blocks    map[string]rawBlock
+	seen      map[string]hcl.Range // first declaration of each single-use block
 	moved     int
 	imports   int
 	files     int
@@ -278,6 +279,8 @@ var (
 		{Type: "resource", LabelNames: []string{"type", "name"}},
 		{Type: "data", LabelNames: []string{"type", "name"}},
 		{Type: "module", LabelNames: []string{"name"}},
+		{Type: "variable", LabelNames: []string{"name"}},
+		{Type: "output", LabelNames: []string{"name"}},
 		{Type: "moved"},
 		{Type: "import"},
 	}}
@@ -296,7 +299,7 @@ var (
 
 // walkRaw parses every Terraform file in dir and gathers the raw facts.
 func walkRaw(dir, rel string) raw {
-	r := raw{providers: map[string]bool{}, blocks: map[string]rawBlock{}}
+	r := raw{providers: map[string]bool{}, blocks: map[string]rawBlock{}, seen: map[string]hcl.Range{}}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		r.diags = append(r.diags, facts.Diagnostic{Severity: facts.SeverityError, Summary: "cannot read module directory", Detail: err.Error(), File: rel})
@@ -369,17 +372,52 @@ func (r *raw) collect(body hcl.Body) {
 				r.signals.ConfiguredProvider = true
 			}
 		case "resource":
+			r.declare(b, b.Labels[0]+"."+b.Labels[1])
 			r.blocks[b.Labels[0]+"."+b.Labels[1]] = repeatFacts(b.Body)
 		case "data":
+			r.declare(b, "data."+b.Labels[0]+"."+b.Labels[1])
 			r.blocks["data."+b.Labels[0]+"."+b.Labels[1]] = repeatFacts(b.Body)
 		case "module":
+			r.declare(b, "module."+b.Labels[0])
 			r.blocks["module."+b.Labels[0]] = repeatFacts(b.Body)
+		case "variable":
+			r.declare(b, "var."+b.Labels[0])
+		case "output":
+			r.declare(b, "output."+b.Labels[0])
 		case "moved":
 			r.moved++
 		case "import":
 			r.imports++
 		}
 	}
+}
+
+// duplicateSummary names each block type Terraform allows only once per
+// address in a module.
+var duplicateSummary = map[string]string{
+	"resource": "Duplicate resource",
+	"data":     "Duplicate data source",
+	"module":   "Duplicate module call",
+	"variable": "Duplicate variable",
+	"output":   "Duplicate output",
+}
+
+// declare records the block at addr and reports a second declaration as an
+// error. Terraform rejects duplicates, and terraform-config-inspect keeps only
+// one of them without saying so.
+func (r *raw) declare(b *hcl.Block, addr string) {
+	first, ok := r.seen[addr]
+	if !ok {
+		r.seen[addr] = b.DefRange
+		return
+	}
+	r.diags = append(r.diags, facts.Diagnostic{
+		Severity: facts.SeverityError,
+		Summary:  duplicateSummary[b.Type],
+		Detail:   fmt.Sprintf("%s is already declared at %s:%d; only one declaration is counted", addr, first.Filename, first.Start.Line),
+		File:     b.DefRange.Filename,
+		Line:     b.DefRange.Start.Line,
+	})
 }
 
 // providerConfigured reports whether a provider block sets anything beyond
