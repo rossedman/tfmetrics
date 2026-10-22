@@ -44,7 +44,7 @@ The rule:
 
 So `1.2.3` against releases `1.2.9`, `1.3.0`, `1.4.1` and `2.0.0` is **3** behind: the lines `1.3`, `1.4` and `2.0`. A module already on the latest release is 0.
 
-When a repo calls the same address several times, the series holds the largest value. A call with no version, a SHA ref, a version nothing satisfies, or a failed lookup gets no series, so absence means unknown, never zero. Versions come from the registry API for registry sources and from `git ls-remote` tags (those that parse as semver) for git sources. Failed lookups print a warning and are skipped.
+When a repo calls the same address several times, the series holds the largest value. A call with no version, a SHA ref, a version nothing satisfies, or a failed lookup gets no series, so absence means unknown, never zero. Versions come from the registry API for registry sources and from `git ls-remote` tags (those that parse as semver) for git sources. A component tag such as `vpc/v1.2.0` is compared only with the repo's other `vpc/` tags, so a monorepo's modules each get their own drift. Failed lookups print a warning and are skipped.
 
 ## Hygiene
 

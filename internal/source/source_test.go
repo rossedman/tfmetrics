@@ -150,6 +150,13 @@ func TestPinning(t *testing.T) {
 		{"git branch", Ref{Kind: KindGit, Ref: "main"}, "", "range"},
 		{"git short hex is branch", Ref{Kind: KindGit, Ref: "abc12"}, "", "range"},
 		{"git partial semver is range", Ref{Kind: KindGit, Ref: "v1.4"}, "", "range"},
+		{"git tag path", Ref{Kind: KindGit, Ref: "tags/0.4.0"}, "", "exact"},
+		{"git full tag ref", Ref{Kind: KindGit, Ref: "refs/tags/v1.0.0"}, "", "exact"},
+		{"git capital V", Ref{Kind: KindGit, Ref: "V1.2.3"}, "", "exact"},
+		{"git component tag slash", Ref{Kind: KindGit, Ref: "vpc/v1.2.0"}, "", "exact"},
+		{"git component tag dash", Ref{Kind: KindGit, Ref: "mozilla_workgroup-1.3.0"}, "", "exact"},
+		{"git branch with digits", Ref{Kind: KindGit, Ref: "fix-1234"}, "", "range"},
+		{"git branch path", Ref{Kind: KindGit, Ref: "feature/new-vpc"}, "", "range"},
 		{"git ignores version arg", Ref{Kind: KindGit}, "1.0.0", "none"},
 		{"http with version in url", Ref{Kind: KindHTTP, Address: "example.com/mods/vpc-1.2.3.zip"}, "", "exact"},
 		{"http v segment", Ref{Kind: KindHTTP, Address: "example.com/v1.2.3/vpc.zip"}, "", "exact"},
@@ -311,5 +318,70 @@ func BenchmarkClassifyGit(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = n.Classify("git::https://github.com/acme/tf-dns.git?ref=v1.4.0")
+	}
+}
+
+func TestTagVersion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		ref, prefix, version string
+		ok                   bool
+	}{
+		{"v1.2.0", "", "v1.2.0", true},
+		{"1.2.0", "", "1.2.0", true},
+		{"V1.2.0", "", "v1.2.0", true},
+		{"tags/0.4.0", "", "0.4.0", true},
+		{"refs/tags/v1.0.0", "", "v1.0.0", true},
+		{"v1.2.0-rc.1", "", "v1.2.0-rc.1", true},
+		{"vpc/v1.2.0", "vpc/", "v1.2.0", true},
+		{"modules/vpc/v1.2.0", "modules/vpc/", "v1.2.0", true},
+		{"tags/vpc/v1.2.0", "vpc/", "v1.2.0", true},
+		{"vpc-v1.2.0", "vpc-", "v1.2.0", true},
+		{"mozilla_workgroup-1.3.0-beta", "mozilla_workgroup-", "1.3.0-beta", true},
+		{" v1.2.0 ", "", "v1.2.0", true},
+		{"main", "", "", false},
+		{"v1.2", "", "", false},
+		{"0123abc", "", "", false},
+		{"vpc1.2.0", "", "", false}, // no separator before the version
+		{"", "", "", false},
+	}
+	for _, tt := range tests {
+		p, v, ok := TagVersion(tt.ref)
+		if p != tt.prefix || v != tt.version || ok != tt.ok {
+			t.Errorf("TagVersion(%q) = %q, %q, %v; want %q, %q, %v", tt.ref, p, v, ok, tt.prefix, tt.version, tt.ok)
+		}
+	}
+}
+
+func FuzzTagVersion(f *testing.F) {
+	for _, s := range []string{"v1.2.0", "tags/0.4.0", "refs/tags/V1.0.0-rc.1", "vpc/v1.2.0", "a-b_c/1.2.3+meta", "main", "v1.2", ""} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, ref string) {
+		prefix, version, ok := TagVersion(ref)
+		if !ok {
+			if prefix != "" || version != "" {
+				t.Fatalf("TagVersion(%q) = %q, %q with ok false", ref, prefix, version)
+			}
+			return
+		}
+		if !semverRe.MatchString(version) {
+			t.Fatalf("TagVersion(%q) version %q is not semver", ref, version)
+		}
+		if prefix != "" && !strings.ContainsAny(prefix[len(prefix)-1:], "/_-") {
+			t.Fatalf("TagVersion(%q) prefix %q does not end in a separator", ref, prefix)
+		}
+		// The parts read back as themselves.
+		if p2, v2, ok2 := TagVersion(prefix + version); !ok2 || v2 != version || (p2 != prefix && !strings.HasPrefix(prefix, "tags/") && !strings.HasPrefix(prefix, "refs/")) {
+			t.Fatalf("TagVersion(%q) = %q, %q does not round-trip: %q, %q, %v", ref, prefix, version, p2, v2, ok2)
+		}
+	})
+}
+
+func BenchmarkTagVersion(b *testing.B) {
+	for b.Loop() {
+		for _, r := range []string{"v1.2.0", "tags/0.4.0", "modules/vpc/v1.2.0", "feature/new-vpc"} {
+			_, _, _ = TagVersion(r)
+		}
 	}
 }

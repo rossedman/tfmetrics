@@ -188,6 +188,9 @@ func TestVersionsBehind(t *testing.T) {
 			call(source.KindGit, "github.com/acme/sha", "0123456789abcdef0123456789abcdef01234567"),
 			call(source.KindGit, "github.com/acme/branch", "main"),
 			call(source.KindGit, "github.com/acme/tags", "v1.0.0"),
+			call(source.KindGit, "github.com/acme/tagpath", "tags/0.4.0"),
+			call(source.KindGit, "github.com/acme/mono//vpc", "vpc/v1.0.0"),
+			call(source.KindGit, "github.com/acme/mono2//db", "db-1.0.0"),
 			call(source.KindPrivateRegistry, "app.terraform.io/acme/vpc/aws", "~> 1.0"),
 			call(source.KindRegistry, "registry.terraform.io/a/fail/aws", "1.0.0"),
 			call(source.KindRegistry, "registry.terraform.io/a/empty/aws", "1.0.0"),
@@ -204,6 +207,9 @@ func TestVersionsBehind(t *testing.T) {
 			"github.com/acme/sha":                 {"1.0.0", "2.0.0"},
 			"github.com/acme/branch":              {"1.0.0", "2.0.0"},
 			"github.com/acme/tags":                {"v1.0.0", "v1.1.0", "v1.2.0", "not-a-version"},
+			"github.com/acme/tagpath":             {"0.4.0", "0.5.0"},
+			"github.com/acme/mono//vpc":           {"vpc/v1.0.0", "vpc/v1.1.0", "db/v1.0.0", "db/v2.0.0", "db/v3.0.0", "v9.0.0"},
+			"github.com/acme/mono2//db":           {"db-1.0.0", "db-1.1.0", "db-1.2.0", "vpc-4.0.0"},
 			"app.terraform.io/acme/vpc/aws":       {"1.0.0", "1.4.0", "2.0.0"},
 			"registry.terraform.io/a/empty/aws":   {"junk", "also-junk"},
 			"registry.terraform.io/a/nomatch/aws": {"1.0.0"},
@@ -227,6 +233,9 @@ func TestVersionsBehind(t *testing.T) {
 	want := map[string]float64{
 		eks:                             4,
 		"github.com/acme/tags":          2, // v1.0.0 -> 1.1, 1.2
+		"github.com/acme/tagpath":       1, // tags/0.4.0 -> 0.5
+		"github.com/acme/mono//vpc":     1, // only vpc/ tags count: 1.1
+		"github.com/acme/mono2//db":     2, // only db- tags count: 1.1, 1.2
 		"app.terraform.io/acme/vpc/aws": 1, // ~> 1.0 selects 1.4.0 -> 2.0
 	}
 	var got []string

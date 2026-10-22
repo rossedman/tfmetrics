@@ -61,8 +61,10 @@ How `pinned` is decided:
 | Source | `exact` | `range` | `none` |
 | --- | --- | --- | --- |
 | Registry | One full version, `1.2.3` or `= 1.2.3` | Anything else, such as `~> 3.15`, `>= 1.0`, `>= 1, < 2` or `1.2` | No `version` |
-| Git | A semver tag or a commit SHA as `ref` | Any other ref, such as a branch name | No `ref` |
+| Git | A release tag or a commit SHA as `ref`: `v1.2.0`, `tags/1.2.0`, or a monorepo component tag such as `vpc/v1.2.0` or `vpc-v1.2.0` | Any other ref, such as a branch name | No `ref` |
 | `http`, `s3`, `gcs` | A `ref`, or a version in the path | | Neither |
+
+A static scan cannot tell a tag from a branch, so a branch named like a release, such as `release-1.2.0`, counts as `exact`.
 
 ## Diagnostics
 
