@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -286,7 +288,12 @@ func TestAggregate(t *testing.T) {
 	c.Labels.Properties = []string{"team"}
 
 	var warn bytes.Buffer
-	m := Aggregate(context.Background(), c, aggInput(), nil, &warn)
+	var lookups [][2]int
+	hooks := Hooks{
+		Warn:   func(msg string) { fmt.Fprintln(&warn, "warning:", msg) },
+		Lookup: func(done, total int) { lookups = append(lookups, [2]int{done, total}) },
+	}
+	m := Aggregate(context.Background(), c, aggInput(), nil, hooks)
 	if m.Repos != 1 {
 		t.Errorf("repos = %d", m.Repos)
 	}
@@ -302,7 +309,10 @@ func TestAggregate(t *testing.T) {
 		t.Errorf("warnings with nil lister: %q", warn.String())
 	}
 
-	m = Aggregate(context.Background(), c, aggInput(), stubLister{}, &warn)
+	m = Aggregate(context.Background(), c, aggInput(), stubLister{}, hooks)
+	if want := [][2]int{{0, 1}, {1, 1}}; !reflect.DeepEqual(lookups, want) {
+		t.Errorf("lookup progress = %v, want %v", lookups, want)
+	}
 	found := false
 	for _, s := range m.Series {
 		if s.Name == metrics.ModuleVersionsBehind && s.Value == 2 {
@@ -313,14 +323,15 @@ func TestAggregate(t *testing.T) {
 		t.Error("versions_behind = 2 expected with lister")
 	}
 
-	_ = Aggregate(context.Background(), c, aggInput(), stubLister{err: errors.New("registry down")}, &warn)
+	_ = Aggregate(context.Background(), c, aggInput(), stubLister{err: errors.New("registry down")}, hooks)
+	_ = Aggregate(context.Background(), c, aggInput(), stubLister{err: errors.New("unheard")}, Hooks{}) // nil hooks are skipped
 	if got := warn.String(); !strings.Contains(got, "warning: version lookup for registry.terraform.io/a/b/c: registry down") {
 		t.Errorf("warn = %q", got)
 	}
 
 	// Rollup via config.
 	c.Labels.Drop = []string{"resource_type", "provider"}
-	m = Aggregate(context.Background(), c, aggInput(), nil, &warn)
+	m = Aggregate(context.Background(), c, aggInput(), nil, hooks)
 	for _, s := range m.Series {
 		if _, ok := s.Labels["resource_type"]; ok {
 			t.Errorf("resource_type not dropped: %v", s.Labels)
@@ -380,7 +391,7 @@ func TestEmit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	res := aggInput()
-	m := Aggregate(context.Background(), config.Default(), res, nil, nil)
+	m := Aggregate(context.Background(), config.Default(), res, nil, Hooks{})
 
 	t.Run("writes every sink", func(t *testing.T) {
 		t.Parallel()

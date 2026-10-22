@@ -16,6 +16,14 @@ Without `--config`, tfmetrics looks for `tfmetrics.yaml` (or `tfmetrics.yml`) in
 
 Secrets never go in the file. The file names an environment variable (`token_env`, `registry_token_env`) and tfmetrics reads the value from there.
 
+## Terminal output
+
+On a terminal, `scan`, `org` and `aggregate` show live progress on stderr: a progress bar with counts, the rate and the time left, a countdown while GitHub's rate limit pauses discovery, and failures printed above the bar as they happen. Each run ends with a summary, and `explain` draws its report with tables and a hygiene score bar.
+
+When stderr is not a terminal, as in CI or when output is piped, every repo prints as a plain line instead, the same as before this view existed. `--plain` forces plain lines on a terminal too, and `NO_COLOR=1` keeps the live view but drops its colors.
+
+Ctrl-C stops a run cleanly: repos already scanned keep their facts files, the rest are left unscanned, and the command exits with status 130. A second Ctrl-C exits at once.
+
 ## Full example
 
 Every key below is shown at its default except where a value is needed to illustrate it. Copy only what you change.

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rossedman/tfmetrics/internal/facts"
@@ -383,7 +384,9 @@ func needsLookup(c facts.ModuleCall) bool {
 // Prefetch looks up the versions of every distinct module address that
 // Compute will need, n at a time, so a caching lister answers Compute's
 // serial lookups from memory. Errors are left for Compute to report.
-func Prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLister, n int) {
+// progress, when set, is called with (0, total) before the first lookup and
+// after each one finishes, from any goroutine.
+func Prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLister, n int, progress func(done, total int)) {
 	if lister == nil {
 		return
 	}
@@ -401,12 +404,18 @@ func Prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLis
 			}
 		}
 	}
+	if progress == nil {
+		progress = func(int, int) {}
+	}
+	progress(0, len(keys))
+	var finished atomic.Int64
 	jobs := make(chan key)
 	var wg sync.WaitGroup
 	for range max(n, 1) {
 		wg.Go(func() {
 			for k := range jobs {
 				_, _ = lister.Versions(ctx, k.kind, k.addr)
+				progress(int(finished.Add(1)), len(keys))
 			}
 		})
 	}

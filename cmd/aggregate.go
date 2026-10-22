@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/rossedman/tfmetrics/internal/app"
@@ -48,13 +46,12 @@ Version drift (tf_module_versions_behind) needs registry and git tag lookups;
 		if offline, _ := cmd.Flags().GetBool("offline"); !offline {
 			lister = app.Resolver(cfg)
 		}
-		m := app.Aggregate(ctx, cfg, results, lister, cmd.ErrOrStderr())
+		m := aggregate(cmd, cfg, results, lister)
 		out := v.GetString("out")
 		if err := app.Emit(ctx, specs, sink.Env{OutDir: out, Weights: cfg.Hygiene.Weights, Stdout: cmd.OutOrStdout()}, results, m); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(cmd.ErrOrStderr(), "aggregated %d repos (%d with Terraform) into %d series\n", len(results), m.Repos, len(m.Series))
-		return err
+		return printAggregated(cmd, live(cmd), len(results), m, specs)
 	},
 }
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -104,18 +103,29 @@ func Resolver(c config.Config) *registry.Resolver {
 	return r
 }
 
+// Hooks report on Aggregate as it runs; nil fields are skipped.
+type Hooks struct {
+	// Lookup is called with (0, total) before version lookups start and after
+	// each one finishes, from any goroutine.
+	Lookup func(done, total int)
+	// Warn reports a failed version lookup.
+	Warn func(msg string)
+}
+
 // Aggregate computes metrics. With lister nil, versions_behind is skipped.
-func Aggregate(ctx context.Context, c config.Config, results []facts.ScanResult, lister metrics.VersionLister, warn io.Writer) metrics.Metrics {
+func Aggregate(ctx context.Context, c config.Config, results []facts.ScanResult, lister metrics.VersionLister, hooks Hooks) metrics.Metrics {
 	opts := metrics.Options{
 		PropertyLabels: c.Labels.Properties,
 		DropLabels:     c.Labels.Drop,
 		Weights:        c.Hygiene.Weights,
 	}
 	if lister != nil {
-		metrics.Prefetch(ctx, results, lister, registry.LookupConcurrency)
+		metrics.Prefetch(ctx, results, lister, registry.LookupConcurrency, hooks.Lookup)
 		opts.Versions = lister
 		opts.OnLookupError = func(addr string, err error) {
-			fmt.Fprintf(warn, "warning: version lookup for %s: %v\n", addr, err)
+			if hooks.Warn != nil {
+				hooks.Warn(fmt.Sprintf("version lookup for %s: %v", addr, err))
+			}
 		}
 	}
 	return metrics.Compute(ctx, results, opts)

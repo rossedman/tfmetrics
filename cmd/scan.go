@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -13,6 +16,7 @@ import (
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/scan"
 	"github.com/rossedman/tfmetrics/internal/sink"
+	"github.com/rossedman/tfmetrics/internal/ui"
 )
 
 var scanCmd = &cobra.Command{
@@ -50,9 +54,15 @@ are still written and emitted, and the command exits non-zero.`,
 		// Clone and scan up to scan.concurrency repos at once; clones spend
 		// most of their time waiting on the network. Each repo is written and
 		// reported as it finishes; the sinks see the repos in argument order.
+		lv := live(cmd)
+		start := time.Now()
+		tr := ui.NewTracker(cmd.ErrOrStderr(), ui.Options{
+			Title: fmt.Sprintf("Scanning %s %s", ui.Count(len(args)), plural(len(args), "repo")),
+			Total: len(args), Noun: "repos", Items: true, Live: lv,
+		})
 		scanned := make([]*facts.ScanResult, len(args))
 		var mu sync.Mutex
-		var failed int
+		var failed, modules int
 		var writeErr error
 		sem := make(chan struct{}, max(cfg.Scan.Concurrency, 1))
 		var wg sync.WaitGroup
@@ -60,13 +70,19 @@ are still written and emitted, and the command exits non-zero.`,
 			wg.Go(func() {
 				sem <- struct{}{}
 				defer func() { <-sem }()
+				if ctx.Err() != nil {
+					return // interrupted: leave the rest unscanned
+				}
 				res, err := scanArg(cmd, arg, git, opts, cfg)
 				mu.Lock()
 				defer mu.Unlock()
+				if err != nil && ctx.Err() != nil {
+					return // cut short by the interrupt, not a failure of its own
+				}
 				if err != nil {
 					// One unreachable repo must not cost the others their scan.
 					failed++
-					fmt.Fprintf(cmd.ErrOrStderr(), "error: %v\n", err)
+					tr.Done(ui.Event{Name: arg, Status: ui.Failed, Err: errors.New(strings.TrimPrefix(err.Error(), arg+": ")), Plain: fmt.Sprintf("error: %v", err)})
 					return
 				}
 				path, err := facts.Write(out, res)
@@ -76,13 +92,42 @@ are still written and emitted, and the command exits non-zero.`,
 					}
 					return
 				}
-				fmt.Fprintf(cmd.ErrOrStderr(), "scanned %s: %d modules -> %s\n", res.Repo, len(res.Modules), path)
+				modules += len(res.Modules)
+				tr.Done(ui.Event{
+					Name: res.Repo, Detail: fmt.Sprintf("%d %s", len(res.Modules), plural(len(res.Modules), "module")),
+					Plain: fmt.Sprintf("scanned %s: %d modules -> %s", res.Repo, len(res.Modules), path),
+				})
 				scanned[i] = &res
 			})
 		}
 		wg.Wait()
+		tr.Close()
 		if writeErr != nil {
 			return writeErr
+		}
+		if err := ctx.Err(); err != nil {
+			done := 0
+			for _, r := range scanned {
+				if r != nil {
+					done++
+				}
+			}
+			_ = ui.Line(cmd.ErrOrStderr(), lv,
+				ui.Warn.Render(fmt.Sprintf("%s Interrupted after %d of %d repos", ui.IconWarn, done, len(args))),
+				fmt.Sprintf("interrupted after %d of %d repos", done, len(args)))
+			return err
+		}
+		if lv {
+			summary := fmt.Sprintf("%s Scanned %s %s %s in %s %s",
+				ui.OK.Render(ui.IconOK), ui.Bold.Render(ui.Count(len(args)-failed)), plural(len(args)-failed, "repo"),
+				ui.Subtle.Render(fmt.Sprintf("(%s %s)", ui.Count(modules), plural(modules, "module"))),
+				ui.Duration(time.Since(start)), ui.Subtle.Render("→ "+out))
+			if failed > 0 {
+				summary += "  " + ui.Err.Render(fmt.Sprintf("%s %d failed", ui.IconErr, failed))
+			}
+			if err := ui.Line(cmd.ErrOrStderr(), true, summary, ""); err != nil {
+				return err
+			}
 		}
 		var results []facts.ScanResult
 		for _, r := range scanned {
@@ -102,7 +147,7 @@ are still written and emitted, and the command exits non-zero.`,
 		if err != nil {
 			return err
 		}
-		m := app.Aggregate(ctx, cfg, results, nil, cmd.ErrOrStderr())
+		m := aggregate(cmd, cfg, results, nil)
 		if err := app.Emit(ctx, specs, sink.Env{OutDir: out, Weights: cfg.Hygiene.Weights, Stdout: cmd.OutOrStdout()}, results, m); err != nil {
 			return err
 		}

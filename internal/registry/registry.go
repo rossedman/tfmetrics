@@ -197,10 +197,12 @@ func (r *Resolver) getJSON(ctx context.Context, host, u string, v any) error {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		// The status leads, so a message cut to one line still says what went
+		// wrong.
 		if detail := errorDetail(resp.Header.Get("Content-Type"), b); detail != "" {
-			return fmt.Errorf("GET %s: %s: %s", u, resp.Status, detail)
+			return fmt.Errorf("%s: %s (GET %s)", resp.Status, detail, u)
 		}
-		return fmt.Errorf("GET %s: %s", u, resp.Status)
+		return fmt.Errorf("%s (GET %s)", resp.Status, u)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
 }
