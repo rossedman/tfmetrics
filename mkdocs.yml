@@ -32,6 +32,13 @@ nav:
   - Get started:
       - Install and first run: getting-started.md
       - Configuration: configuration.md
+  - Tutorials:
+      - Overview: tutorials/index.md
+      - Your first org audit: tutorials/first-org-audit.md
+      - Run a module upgrade campaign: tutorials/upgrade-campaign.md
+      - Keep providers and Terraform current: tutorials/version-drift.md
+      - Guardrails for pull requests: tutorials/pr-guardrails.md
+      - Scan a large org fast: tutorials/large-orgs.md
   - Guides:
       - How it works: how-it-works.md
       - Nightly org scan: guides/nightly-org-scan.md

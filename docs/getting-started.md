@@ -139,6 +139,7 @@ Drop `--offline` to look up the available versions of each module, provider and 
 
 ## Next steps
 
+- Learn by goal, with real commands and output: [Tutorials](tutorials/index.md) cover an org audit, upgrade campaigns, provider and Terraform drift, pull request guardrails, and large orgs.
 - Scan a whole org: set `source.github.orgs` in [the config](configuration.md) ([every key](reference/config.md)) and run `tfmetrics org`, or follow [Nightly org scan](guides/nightly-org-scan.md).
 - Gate pull requests on one repo: [PR check](guides/pr-check.md).
 - Understand the stages: [How it works](how-it-works.md).
