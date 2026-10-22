@@ -22,7 +22,7 @@ tfmetrics has a few ways to get at the same facts. They suit different moments:
 | --- | --- | --- |
 | `scan` | You have a handful of repos, a local checkout, or one repo in CI. | You want a whole org: `org` discovers repos and caches results. |
 | `org` | You want every repo in one or more GitHub orgs, on a schedule. | You only need one repo. |
-| `explain` | You are looking at one repo and want to see why its score is what it is. | You want to compare repos: aggregate instead. |
+| `explain` | You are looking at one repo and want to see why its score is what it is, or how far behind each of its modules is. | You want to compare repos: aggregate instead. |
 | `aggregate` | You want numbers across many repos: dashboards, rankings, trends. | You need to know *which line* to change: use `who-uses` or SARIF. |
 | `who-uses` | You are about to change, upgrade or retire a module or provider and need every caller. | You want an org-wide trend: use the `*_versions_behind` metrics. |
 | The `markdown` sink | People should read a report: a PR comment or a job summary. | A tool should act on the results. |

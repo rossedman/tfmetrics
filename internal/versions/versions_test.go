@@ -145,6 +145,51 @@ func TestBehind(t *testing.T) {
 	}
 }
 
+func TestCompare(t *testing.T) {
+	t.Parallel()
+	avail := Parse([]string{"1.2.3", "1.2.4", "1.2.9", "1.3.0", "1.3.1", "1.4.1", "2.0.0", "2.0.1", "2.1.0-rc.1", "3.0.0-beta"})
+	tests := []struct {
+		pinned              string
+		major, minor, patch int
+		update              string
+	}{
+		{"1.2.3", 1, 2, 4, UpdateMajor},
+		{"1.2.9", 1, 2, 2, UpdateMajor},
+		{"1.4.1", 1, 0, 1, UpdateMajor},
+		{"2.0.0", 0, 0, 1, UpdatePatch},
+		{"2.0.1", 0, 0, 0, UpdateCurrent},
+		{"2.5.0", 0, 0, 0, UpdateCurrent},
+		{"1.2.5", 1, 2, 3, UpdateMajor}, // not itself a release
+	}
+	for _, tt := range tests {
+		t.Run(tt.pinned, func(t *testing.T) {
+			t.Parallel()
+			g := Compare(mustVer(t, tt.pinned), avail)
+			if g.Major != tt.major || g.Minor != tt.minor || g.Patch != tt.patch {
+				t.Errorf("Compare(%s) = %d major, %d minor, %d patch; want %d, %d, %d", tt.pinned, g.Major, g.Minor, g.Patch, tt.major, tt.minor, tt.patch)
+			}
+			if g.Update() != tt.update {
+				t.Errorf("Update() = %s, want %s", g.Update(), tt.update)
+			}
+			if g.Releases() != g.Major+g.Minor+g.Patch {
+				t.Errorf("Releases() = %d", g.Releases())
+			}
+			if g.Latest.String() != "2.0.1" {
+				t.Errorf("Latest = %v", g.Latest)
+			}
+		})
+	}
+	if got := Compare(mustVer(t, "1.3.0"), Parse([]string{"1.3.0", "1.3.2", "1.4.0"})); got.Update() != UpdateMinor || got.Minor != 1 || got.Patch != 1 {
+		t.Errorf("minor: %+v", got)
+	}
+	if got := Compare(nil, avail); got.Releases() != 0 || got.Latest == nil {
+		t.Errorf("nil pinned: %+v", got)
+	}
+	if got := Compare(mustVer(t, "1.0.0"), nil); got.Releases() != 0 || got.Latest != nil {
+		t.Errorf("no versions: %+v", got)
+	}
+}
+
 var fuzzAvail = []string{"1.0.0", "1.2.3", "1.2.9", "1.3.0", "1.4.1", "1.5.0-rc.1", "2.0.0"}
 
 func FuzzSelectedBehind(f *testing.F) {
@@ -156,6 +201,9 @@ func FuzzSelectedBehind(f *testing.F) {
 	f.Fuzz(func(t *testing.T, constraint string) {
 		sel := Selected(constraint, avail)
 		b := Behind(sel, avail)
+		if g := Compare(sel, avail); g.Major+g.Minor != b || g.Patch < 0 {
+			t.Fatalf("Compare(%v) = %+v, but Behind = %d", sel, g, b)
+		}
 		if b < 0 {
 			t.Fatalf("Behind(%q) = %d < 0", constraint, b)
 		}
@@ -203,6 +251,15 @@ func BenchmarkBehind(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = Behind(pinned, avail)
+	}
+}
+
+func BenchmarkCompare(b *testing.B) {
+	avail := Parse(fuzzAvail)
+	pinned := mustVer(b, "1.2.3")
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = Compare(pinned, avail)
 	}
 }
 

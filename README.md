@@ -41,7 +41,7 @@ Scan a repo into a facts file, read the per-repo report, then compute metrics. T
 $ tfmetrics scan ./infra
 scanned acme/infra: 5 modules -> facts/acme__infra.json
 
-$ tfmetrics explain facts/
+$ tfmetrics explain facts/ --offline
 acme/infra @ 084d5f2f6d15
 owners: acme/platform
 
@@ -68,7 +68,7 @@ tf_hygiene_score{org="acme",owner="acme/platform",repo="acme/infra"} 65.3
 tf_repos_total{org="acme"} 1.0
 ```
 
-The `explain` report continues with the module list, remote module calls and parse diagnostics. Drop `--offline` to also look up registry and git tags for version drift.
+The `explain` report continues with the module list, remote module calls and parse diagnostics. Drop `--offline` to also look up registry and git tags: `explain` then shows each module call's latest release and how many major, minor and patch releases behind it is, and `aggregate` adds the `*_versions_behind` gauges.
 
 ## Commands
 
@@ -77,7 +77,7 @@ The `explain` report continues with the module list, remote module calls and par
 | `tfmetrics scan <path\|repo>...` | Parse local directories, git URLs or GitHub `owner/name` repos into facts JSON, one file per repo. With `--sink`, also aggregate and emit, which suits a per-repo PR check (`tfmetrics scan . --sink markdown`). |
 | `tfmetrics org` | Discover repos in one or more GitHub orgs, apply name, topic and custom property filters, then shallow-clone and scan the matches in parallel. Unchanged repos reuse cached facts. |
 | `tfmetrics aggregate <facts>...` | Compute the metrics catalog from facts files and write it to the sinks: `json`, `openmetrics`, `otlp`, `csv`, `parquet`, `markdown`, `sarif`. |
-| `tfmetrics explain <facts>...` | Print a human-readable report per repo: inventory, hygiene score and its checks, remote module pinning, diagnostics. |
+| `tfmetrics explain <facts>...` | Print a human-readable report per repo: inventory, hygiene score and its checks, remote module pinning and how many major, minor and patch releases each call is behind, diagnostics. |
 | `tfmetrics who-uses <module> <facts>...` | List every call to a module, or with `--provider` every requirement of a provider: repo, owner, file and line, version, and how far behind it is. `--behind N` lists the callers still to upgrade. |
 
 `tfmetrics version` prints the version, commit and build date. Run `tfmetrics <command> --help` for every flag.

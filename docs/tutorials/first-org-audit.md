@@ -73,6 +73,7 @@ owners: dav3r,felddy,jsf9k,mcdonnnj
 modules      9 (9 root, 0 child)
 resources    118 declared, 75 data sources
 module calls 46 (46 remote unpinned)
+outdated     0 (0 major, 0 minor, 0 patch)
 lines        5720
 parse errors 0
 
@@ -85,17 +86,19 @@ hygiene score 70.0 / 100
   Modules that parse cleanly           9/9      weight 10
 
 remote module calls
-  ADDRESS                                                  KIND  VERSION  PINNED  IN
-  github.com/cisagov/disable-inactive-iam-users-tf-module  git   -        none    audit
-  github.com/cisagov/disable-inactive-iam-users-tf-module  git   -        none    dns
+  ADDRESS                                                  KIND  VERSION  PINNED  LATEST  BEHIND  IN
+  github.com/cisagov/disable-inactive-iam-users-tf-module  git   -        none    -       -       audit
+  github.com/cisagov/disable-inactive-iam-users-tf-module  git   -        none    -       -       dns
   ...
 ```
 
-This repo is careful everywhere except one thing: none of its 46 module calls pins a version, so every `terraform init` takes whatever those modules' default branches hold that day. That one check is worth 30 points. Pinning the calls, with `?ref=v1.2.0` on a git source, takes the repo from 70 to 100.
+This repo is careful everywhere except one thing: none of its 46 module calls pins a version, so every `terraform init` takes whatever those modules' default branches hold that day. That one check is worth 30 points. Pinning the calls, with `?ref=v1.2.0` on a git source, takes the repo from 70 to 100. It also explains the empty `LATEST` and `BEHIND` columns: a call with no version has nothing to measure.
 
-On a terminal, `explain` draws the same report with tables and a score bar:
+In a repo that does pin its modules, those columns show how far behind each call is: its latest release, and how many major, minor and patch releases have come out since the version it uses. The `outdated` line counts the calls missing each kind of release.
 
-![tfmetrics explain on a terminal, with a hygiene score bar, checks and module tables](../assets/tutorials/explain.png)
+On a terminal, `explain` draws the report with tables, a score bar and colors. Here it is for a repo with pinned modules, where red marks the calls missing a major release:
+
+![tfmetrics explain on a terminal, with a hygiene score bar, module tables and how far behind each module call is](../assets/tutorials/explain.png)
 
 ## 4. Find the biggest problems across all repos
 
