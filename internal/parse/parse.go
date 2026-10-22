@@ -59,25 +59,35 @@ func Module(repoRoot, rel string, opts Options) facts.ModuleFacts {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(rel))
 	m := facts.ModuleFacts{Path: rel}
 
-	r := walkRaw(dir, rel)
+	r, mod, hdiags := loadDir(dir, rel)
 	m.Files, m.Lines = r.files, r.lines
 	m.Backend = r.backend
 	m.MovedBlocks, m.ImportBlocks = r.moved, r.imports
 	m.Kind = classify.Kind(rel, r.signals, opts.RootOverrides)
 	m.Diagnostics = append(m.Diagnostics, r.diags...)
 
-	mod, diags, err := loadModule(dir)
-	if err != nil {
-		m.Diagnostics = append(m.Diagnostics, facts.Diagnostic{
-			Severity: facts.SeverityError, Summary: "Terraform parser crashed", Detail: err.Error(), File: rel,
-		})
-		return finish(m)
-	}
-	for _, d := range diags {
-		m.Diagnostics = append(m.Diagnostics, convertDiag(d, repoRoot))
-	}
-	if mod == nil {
-		return finish(m)
+	if mod != nil && !hdiags.HasErrors() {
+		for _, d := range hdiags {
+			m.Diagnostics = append(m.Diagnostics, convertHCLDiag(d))
+		}
+	} else {
+		// Let terraform-config-inspect load the module itself: its legacy HCL1
+		// parser reads some pre-0.12 modules that HCL2 rejects.
+		var diags tfconfig.Diagnostics
+		var err error
+		mod, diags, err = loadModule(dir)
+		if err != nil {
+			m.Diagnostics = append(m.Diagnostics, facts.Diagnostic{
+				Severity: facts.SeverityError, Summary: "Terraform parser crashed", Detail: err.Error(), File: rel,
+			})
+			return finish(m)
+		}
+		for _, d := range diags {
+			m.Diagnostics = append(m.Diagnostics, convertDiag(d, repoRoot))
+		}
+		if mod == nil {
+			return finish(m)
+		}
 	}
 
 	m.RequiredVersion = strings.Join(mod.RequiredCore, ", ")
@@ -113,8 +123,40 @@ func loadModule(dir string) (mod *tfconfig.Module, diags tfconfig.Diagnostics, e
 			mod, diags, err = nil, nil, fmt.Errorf("panic: %v", r)
 		}
 	}()
-	mod, diags = tfconfig.LoadModule(dir)
+	mod, diags = tfconfig.LoadModuleFromFilesystem(moduleFS{}, dir)
 	return mod, diags, nil
+}
+
+// moduleFS is the operating system's filesystem with Terraform Stacks files
+// hidden. terraform-config-inspect reads .tfstack.hcl and .tfcomponent.hcl
+// files as part of a module and panics on their blocks, but they are not
+// module configuration.
+type moduleFS struct{}
+
+// Open opens a file.
+func (moduleFS) Open(name string) (tfconfig.File, error) { return os.Open(name) }
+
+// ReadFile reads a file.
+func (moduleFS) ReadFile(name string) ([]byte, error) { return os.ReadFile(name) }
+
+// ReadDir lists a directory without its stack files.
+func (moduleFS) ReadDir(dir string) ([]os.FileInfo, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []os.FileInfo
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tfstack.hcl") || strings.HasSuffix(e.Name(), ".tfcomponent.hcl") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, info)
+	}
+	return out, nil
 }
 
 // finish sorts every slice so output is deterministic, and replaces nil slices
@@ -264,6 +306,20 @@ func convertDiag(d tfconfig.Diagnostic, repoRoot string) facts.Diagnostic {
 	return out
 }
 
+// convertHCLDiag converts a diagnostic from parsing a file whose name is
+// already repo-relative, the way tfconfig and convertDiag together would.
+func convertHCLDiag(d *hcl.Diagnostic) facts.Diagnostic {
+	out := facts.Diagnostic{Severity: facts.SeverityWarning, Summary: d.Summary, Detail: d.Detail}
+	if d.Severity == hcl.DiagError {
+		out.Severity = facts.SeverityError
+	}
+	if d.Subject != nil {
+		out.File = d.Subject.Filename
+		out.Line = d.Subject.Start.Line
+	}
+	return out
+}
+
 // relFile returns filename relative to repoRoot with forward slashes.
 func relFile(repoRoot, filename string) string {
 	if rel, err := filepath.Rel(repoRoot, filename); err == nil && !strings.HasPrefix(rel, "..") {
@@ -297,24 +353,53 @@ var (
 	}}
 )
 
-// walkRaw parses every Terraform file in dir and gathers the raw facts.
-func walkRaw(dir, rel string) raw {
-	r := raw{providers: map[string]bool{}, blocks: map[string]rawBlock{}, seen: map[string]hcl.Range{}}
+// loadDir parses each file in dir once. The Terraform files feed the raw
+// facts, and the files terraform-config-inspect would read build its module,
+// in its order: primary files, then overrides. mod is nil when the directory
+// cannot be read or tfconfig panics; diags are the parse and decode
+// diagnostics for the module, which the caller only trusts without errors.
+func loadDir(dir, rel string) (r raw, mod *tfconfig.Module, diags hcl.Diagnostics) {
+	r = raw{providers: map[string]bool{}, blocks: map[string]rawBlock{}, seen: map[string]hcl.Range{}}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		r.diags = append(r.diags, facts.Diagnostic{Severity: facts.SeverityError, Summary: "cannot read module directory", Detail: err.Error(), File: rel})
-		return r
+		return r, nil, nil
 	}
 	p := hclparse.NewParser()
+	type parsed struct {
+		file  *hcl.File
+		diags hcl.Diagnostics
+	}
+	files := map[string]parsed{}
+	parse := func(name string, src []byte) parsed {
+		fileRel := path.Join(rel, name)
+		var pf parsed
+		if strings.HasSuffix(name, ".json") {
+			pf.file, pf.diags = p.ParseJSON(src, fileRel)
+		} else {
+			pf.file, pf.diags = p.ParseHCL(src, fileRel)
+		}
+		files[name] = pf
+		return pf
+	}
+	var primary, override []string
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || !classify.IsTerraformFile(name) {
+		if e.IsDir() {
+			continue
+		}
+		if ext := tfconfigExt(name); ext != "" && !tfconfigIgnored(name) {
+			base := strings.TrimSuffix(name, ext)
+			if base == "override" || strings.HasSuffix(base, "_override") {
+				override = append(override, name)
+			} else {
+				primary = append(primary, name)
+			}
+		}
+		if !classify.IsTerraformFile(name) {
 			continue
 		}
 		fileRel := path.Join(rel, name)
-		if rel == "." {
-			fileRel = name
-		}
 		src, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			r.diags = append(r.diags, facts.Diagnostic{Severity: facts.SeverityError, Summary: "cannot read file", Detail: err.Error(), File: fileRel})
@@ -326,21 +411,62 @@ func walkRaw(dir, rel string) raw {
 			r.diags = append(r.diags, facts.Diagnostic{Severity: facts.SeverityWarning, Summary: "OpenTofu file not parsed", Detail: "tfmetrics counts .tofu files but parses only .tf and .tf.json", File: fileRel})
 			continue
 		}
-		var f *hcl.File
-		var diags hcl.Diagnostics
-		if strings.HasSuffix(name, ".json") {
-			f, diags = p.ParseJSON(src, fileRel)
-		} else {
-			f, diags = p.ParseHCL(src, fileRel)
+		if pf := parse(name, src); pf.file != nil && pf.file.Body != nil {
+			r.collect(pf.file.Body)
 		}
-		// tfconfig reports syntax errors itself; record only what it cannot.
-		_ = diags
-		if f == nil || f.Body == nil {
-			continue
-		}
-		r.collect(f.Body)
 	}
-	return r
+
+	defer func() {
+		if recover() != nil {
+			mod, diags = nil, nil // the caller falls back to loadModule
+		}
+	}()
+	mod = tfconfig.NewModule(dir)
+	for _, name := range append(primary, override...) {
+		pf, ok := files[name]
+		if !ok {
+			src, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil {
+				return r, nil, nil
+			}
+			pf = parse(name, src)
+		}
+		diags = append(diags, pf.diags...)
+		if pf.file != nil {
+			diags = append(diags, tfconfig.LoadModuleFromFile(pf.file, mod)...)
+		}
+	}
+	// What tfconfig's LoadModule adds after loading: a requirement for every
+	// provider a resource implies.
+	for _, res := range mod.ManagedResources {
+		if _, ok := mod.RequiredProviders[res.Provider.Name]; !ok {
+			mod.RequiredProviders[res.Provider.Name] = &tfconfig.ProviderRequirement{}
+		}
+	}
+	for _, res := range mod.DataResources {
+		if _, ok := mod.RequiredProviders[res.Provider.Name]; !ok {
+			mod.RequiredProviders[res.Provider.Name] = &tfconfig.ProviderRequirement{}
+		}
+	}
+	return r, mod, diags
+}
+
+// tfconfigExt returns the extension of a module file terraform-config-inspect
+// loads, or "" for any other file. Stacks files are left out; see moduleFS.
+func tfconfigExt(name string) string {
+	for _, ext := range []string{".tf", ".tf.json"} {
+		if strings.HasSuffix(name, ext) {
+			return ext
+		}
+	}
+	return ""
+}
+
+// tfconfigIgnored reports whether terraform-config-inspect skips name as a
+// hidden or editor backup file.
+func tfconfigIgnored(name string) bool {
+	return strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") ||
+		strings.HasPrefix(name, "#") && strings.HasSuffix(name, "#")
 }
 
 // collect gathers raw facts from one file body.
