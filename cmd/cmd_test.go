@@ -22,6 +22,7 @@ import (
 	"github.com/rossedman/tfmetrics/internal/app"
 	"github.com/rossedman/tfmetrics/internal/config"
 	"github.com/rossedman/tfmetrics/internal/facts"
+	"github.com/rossedman/tfmetrics/internal/metrics"
 )
 
 // fixtureDir is the acme-infra fixture as an absolute path, resolved before
@@ -1075,4 +1076,82 @@ func TestInterruptedRunsStopWithoutFailures(t *testing.T) {
 			t.Errorf("%s: interrupted repos reported as failures:\n%s", args[0], errb.String())
 		}
 	}
+}
+
+// withLister replaces version lookups for the test.
+func withLister(t *testing.T, l metrics.VersionLister) {
+	t.Helper()
+	old := newLister
+	newLister = func(config.Config) metrics.VersionLister { return l }
+	t.Cleanup(func() { newLister = old })
+}
+
+func TestWhoUses(t *testing.T) {
+	work := sandbox(t)
+	factsDir := scanFixture(t, work)
+
+	out, _ := mustRun(t, "who-uses", "terraform-aws-modules/eks/aws", factsDir, "--offline")
+	mustContain(t, "text", out, "registry.terraform.io/terraform-aws-modules/eks/aws: 2 calls in 1 repo",
+		"versions: 17.24.0 (1), 19.21.0 (1)", "live/prod/main.tf:27", "live/staging/main.tf")
+	if strings.Contains(out, "BEHIND") {
+		t.Errorf("offline output has a BEHIND column:\n%s", out)
+	}
+
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir, "--offline", "--format", "json")
+	var uses []map[string]any
+	if err := json.Unmarshal([]byte(out), &uses); err != nil || len(uses) != 2 || uses[0]["repo"] != "local/acme-infra" {
+		t.Errorf("json = %v, %v\n%s", uses, err, out)
+	}
+	out, _ = mustRun(t, "who-uses", "nothing/at/all", factsDir, "--offline", "--format", "json")
+	if strings.TrimSpace(out) != "[]" {
+		t.Errorf("no matches json = %q", out)
+	}
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir, "--offline", "--format", "csv")
+	mustContain(t, "csv", out, "address,repo,owner,module,file,line,source_kind,version,pinned,behind\n", ",live/prod/main.tf,27,registry,19.21.0,exact,\n")
+
+	out, _ = mustRun(t, "who-uses", "hashicorp/aws", factsDir, "--offline", "--provider")
+	mustContain(t, "providers", out, "hashicorp/aws: ", "requirements in 1 repo")
+
+	// Online: drift from the lister, then --behind keeps the laggards.
+	withLister(t, fakeVersions{"registry.terraform.io/terraform-aws-modules/eks/aws": {"17.24.0", "19.21.0", "20.0.0"}})
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir)
+	mustContain(t, "online", out, "BEHIND")
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir, "--behind", "2")
+	mustContain(t, "behind 2", out, "1 call in 1 repo", "17.24.0")
+	if strings.Contains(out, "19.21.0") {
+		t.Errorf("--behind 2 kept a call 1 behind:\n%s", out)
+	}
+	_, errs := mustRun(t, "who-uses", "terraform-aws-modules", factsDir) // matches nothing whole-segment
+	if errs != "" {
+		t.Errorf("stderr = %q", errs)
+	}
+
+	// Failed lookups warn once per address.
+	_, errs = mustRun(t, "who-uses", "acme/tf-dns", factsDir)
+	if strings.Count(errs, "warning: version lookup for github.com/acme/tf-dns: not found") != 1 {
+		t.Errorf("stderr = %q", errs)
+	}
+
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"who-uses", "eks/aws"}, "requires at least 2 arg"},
+		{[]string{"who-uses", "eks/aws", factsDir, "--format", "yaml"}, `unknown format "yaml"`},
+		{[]string{"who-uses", "eks/aws", factsDir, "--behind", "1", "--offline"}, "--behind needs version lookups"},
+		{[]string{"who-uses", "eks/aws", filepath.Join(work, "missing")}, "missing"},
+	} {
+		if _, _, err := run(t, tt.args...); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%v: err = %v, want %q", tt.args, err, tt.want)
+		}
+	}
+}
+
+func TestWhoUsesLive(t *testing.T) {
+	work := sandbox(t)
+	factsDir := scanFixture(t, work)
+	withLive(t)
+	withLister(t, fakeVersions{"registry.terraform.io/terraform-aws-modules/eks/aws": {"17.24.0", "19.21.0", "20.0.0"}})
+	out, _ := mustRun(t, "who-uses", "eks/aws", factsDir)
+	mustContain(t, "styled", ansi.Strip(out), "2 calls in 1 repo", "╭", "│ Behind")
 }

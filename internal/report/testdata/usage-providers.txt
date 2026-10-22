@@ -1,0 +1,6 @@
+hashicorp/aws: 2 requirements in 2 repos
+versions: none (1), ~> 5.0 (1)
+
+REPO      OWNER          MODULE     VERSION
+acme/api  unowned        .          -
+acme/web  acme/web-team  live/prod  ~> 5.0
