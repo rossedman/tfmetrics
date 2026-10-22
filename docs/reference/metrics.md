@@ -1,6 +1,6 @@
 # Metrics catalog
 
-tfmetrics emits 17 gauges, all prefixed `tf_`. They are computed from [facts files](facts.md), so the same facts always give the same numbers, and every sink carries the same catalog.
+tfmetrics emits 19 gauges, all prefixed `tf_`. They are computed from [facts files](facts.md), so the same facts always give the same numbers, and every sink carries the same catalog.
 
 ## Labels
 
@@ -27,6 +27,8 @@ A repo with no Terraform contributes no series at all, and does not count in `tf
 | `tf_module_calls` | `address`, `source_kind`, `version` | Module calls, one series per address and version. Local calls are included, with the path as the address. |
 | `tf_module_calls_unpinned` | `source_kind` | Remote module calls with no version or ref, per source kind. Local calls are excluded, and kinds with nothing unpinned report 0. |
 | `tf_module_versions_behind` | `address` | Distinct newer `major.minor` release lines than the pinned version. See below. |
+| `tf_provider_versions_behind` | `provider` | The same count for each provider, from the version its constraint selects. See below. |
+| `tf_terraform_versions_behind` | none | The same count for Terraform itself, from the version the roots' `required_version` selects. See below. |
 | `tf_provider_constraint` | `provider`, `constraint` | Provider requirements in root modules, by version constraint, or `none`. |
 | `tf_required_version` | `constraint` | Root modules by Terraform core version constraint, or `none`. |
 
@@ -45,6 +47,15 @@ The rule:
 So `1.2.3` against releases `1.2.9`, `1.3.0`, `1.4.1` and `2.0.0` is **3** behind: the lines `1.3`, `1.4` and `2.0`. A module already on the latest release is 0.
 
 When a repo calls the same address several times, the series holds the largest value. A call with no version, a SHA ref, a version nothing satisfies, or a failed lookup gets no series, so absence means unknown, never zero. Versions come from the registry API for registry sources and from `git ls-remote` tags (those that parse as semver) for git sources. A component tag such as `vpc/v1.2.0` is compared only with the repo's other `vpc/` tags, so a monorepo's modules each get their own drift. Failed lookups print a warning and are skipped.
+
+### tf_provider_versions_behind and tf_terraform_versions_behind
+
+The same rule, applied to the providers and the Terraform version a repo runs on. Both need lookups, so neither is computed with `--offline`.
+
+- **Providers.** Every `required_providers` entry with a version constraint, in any module, is resolved against the versions in its registry. A missing `source` means `hashicorp/<name>`, as it does for `terraform init`. `provider` is the source, with `registry.terraform.io/` dropped: `hashicorp/aws`. When several modules constrain one provider, the series holds the largest value, so a child module stuck on `~> 4.0` shows even when the root allows anything. A constraint that only sets a floor, such as `>= 4.0`, selects the latest release and is 0.
+- **Terraform.** Every root module's `required_version` is resolved against Terraform's release tags (`git ls-remote` on `github.com/hashicorp/terraform`). The series holds the largest value across the repo's roots. Child modules are left out: their `required_version` states what the module supports, not what runs it.
+
+A provider or root with no constraint gets no series.
 
 ## Hygiene
 

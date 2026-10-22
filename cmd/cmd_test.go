@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,11 +15,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	"github.com/rossedman/tfmetrics/internal/app"
+	"github.com/rossedman/tfmetrics/internal/config"
 	"github.com/rossedman/tfmetrics/internal/facts"
+	"github.com/rossedman/tfmetrics/internal/metrics"
 )
 
 // fixtureDir is the acme-infra fixture as an absolute path, resolved before
@@ -921,4 +927,231 @@ func TestScanConcurrencyFlag(t *testing.T) {
 	if got := v.GetInt("scan" + app.KeyDelimiter + "concurrency"); got != 1 {
 		t.Errorf("scan.concurrency = %d, want the flag's 1", got)
 	}
+}
+
+// withLive makes commands treat their output buffers as terminals.
+func withLive(t *testing.T) {
+	t.Helper()
+	old := interactive
+	interactive = func(io.Writer) bool { return true }
+	t.Cleanup(func() { interactive = old })
+}
+
+func TestLiveOutput(t *testing.T) {
+	work := sandbox(t)
+	withLive(t)
+	a := simpleRepo(t, work, "one")
+	missing := "file://" + filepath.Join(work, "missing.git")
+	_, errs, err := run(t, "scan", a, missing, "--out", "facts")
+	if err == nil {
+		t.Error("a failed repo still fails the command")
+	}
+	errs = ansi.Strip(errs)
+	mustContain(t, "scan", errs, "✓ local/one  1 module", "✗ "+missing+"  git clone", "Scanned 1 repo (1 module)", "1 failed")
+	if strings.Contains(errs, "scanned local/one:") {
+		t.Errorf("plain line in live output:\n%s", errs)
+	}
+
+	clones := localClones(t, work, "tf-net", "tf-app")
+	_, errs = mustRun(t, "org", "--local-dir", clones, "--org", "acme", "--out", "facts", "--cache-dir", filepath.Join(work, "cd"), "--sink", "json")
+	errs = ansi.Strip(errs)
+	mustContain(t, "org", errs, "Scanned 2 repos in", "2 scanned · 0 from cache", "Aggregated 3 repos (3 with Terraform)", "→ json")
+
+	_, errs = mustRun(t, "aggregate", "facts", "--offline", "--out", "m")
+	mustContain(t, "aggregate", errs, "✓ Aggregated 3 repos")
+
+	out, _ := mustRun(t, "explain", filepath.Join("facts", "acme__tf-net.json"))
+	mustContain(t, "explain", out, "acme/tf-net @", "Hygiene", "╭")
+
+	// --plain keeps the line-by-line output even on a terminal.
+	_, errs = mustRun(t, "--plain", "scan", a, "--out", "facts")
+	mustContain(t, "plain scan", errs, "scanned local/one: 1 modules ->")
+	out, _ = mustRun(t, "--plain", "explain", filepath.Join("facts", "acme__tf-net.json"))
+	mustContain(t, "plain explain", out, "hygiene score")
+}
+
+func TestLiveOrgFailures(t *testing.T) {
+	work := sandbox(t)
+	withLive(t)
+	clones := localClones(t, work, "tf-net", "broken")
+	// Caching fails for one repo: its cache entry is a file, not a directory.
+	cacheDir := filepath.Join(work, "cd")
+	writeFile(t, filepath.Join(cacheDir, "acme__broken"), "not a directory")
+	_, errs, err := run(t, "org", "--local-dir", clones, "--org", "acme", "--out", "facts", "--cache-dir", cacheDir)
+	if err != nil {
+		t.Fatalf("one failure out of two does not fail the run: %v\n%s", err, errs)
+	}
+	mustContain(t, "org", ansi.Strip(errs), "✗ acme/broken", "! Scanned 2 repos", "1 failed")
+}
+
+func TestLiveOrgDiscovery(t *testing.T) {
+	work := sandbox(t)
+	withLive(t)
+	srv := fakeGitHub(t, `[{"name":"tf-net","full_name":"acme/tf-net","clone_url":"https://example.invalid/acme/tf-net.git"}]`, http.StatusOK)
+	writeFile(t, filepath.Join(work, "gh.yaml"), fmt.Sprintf("source:\n  github:\n    base_url: %s\n", srv.URL))
+	_, errs := mustRun(t, "org", "--config", "gh.yaml", "--org", "acme", "--dry-run")
+	mustContain(t, "discovery", ansi.Strip(errs), "✓ Found 1 repo in acme")
+}
+
+// fakeVersions answers version lookups from a map.
+type fakeVersions map[string][]string
+
+func (f fakeVersions) Versions(_ context.Context, _, addr string) ([]string, error) {
+	if v, ok := f[addr]; ok {
+		return v, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func TestAggregateLookupProgress(t *testing.T) {
+	work := sandbox(t)
+	results, err := facts.ReadAll([]string{scanFixture(t, work)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lister := fakeVersions{"registry.terraform.io/terraform-aws-modules/eks/aws": {"17.24.0", "19.21.0", "20.0.0"}}
+	for _, lv := range []bool{false, true} {
+		var errb bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetErr(&errb)
+		cmd.SetContext(context.Background())
+		old := interactive
+		interactive = func(io.Writer) bool { return lv }
+		m := aggregate(cmd, config.Default(), results, lister)
+		interactive = old
+		if m.Repos != 1 {
+			t.Errorf("repos = %d", m.Repos)
+		}
+		want := "warning: version lookup for github.com/acme/tf-dns: not found"
+		if lv {
+			want = "! version lookup for github.com/acme/tf-dns: not found"
+		}
+		mustContain(t, fmt.Sprintf("live=%v", lv), ansi.Strip(errb.String()), want)
+	}
+}
+
+func TestPrintError(t *testing.T) {
+	var b bytes.Buffer
+	printError(&b, errors.New("boom"))
+	if b.String() != "error: boom\n" {
+		t.Errorf("plain = %q", b.String())
+	}
+	withLive(t)
+	b.Reset()
+	printError(&b, errors.New("boom"))
+	if b.String() != "✗ error: boom\n" {
+		t.Errorf("live = %q", b.String())
+	}
+}
+
+func TestInterruptedRunsStopWithoutFailures(t *testing.T) {
+	work := sandbox(t)
+	a := simpleRepo(t, work, "one")
+	clones := localClones(t, work, "tf-net")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, tc := range []struct {
+		cmd  *cobra.Command
+		args []string
+	}{
+		{scanCmd, []string{"scan", a, "--out", "facts"}},
+		{orgCmd, []string{"org", "--local-dir", clones, "--org", "acme", "--out", "facts", "--cache-dir", filepath.Join(work, "cd")}},
+	} {
+		args := tc.args
+		reset()
+		// Cobra hands the root's context only to a subcommand that has none,
+		// and earlier tests in this process gave each one a context.
+		tc.cmd.SetContext(ctx)
+		t.Cleanup(func() { tc.cmd.SetContext(context.Background()) })
+		var errb bytes.Buffer
+		rootCmd.SetOut(io.Discard)
+		rootCmd.SetErr(&errb)
+		rootCmd.SetArgs(args)
+		err := rootCmd.ExecuteContext(ctx)
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("%s: err = %v, want context.Canceled", args[0], err)
+		}
+		mustContain(t, args[0], errb.String(), "interrupted after 0 of 1 repos")
+		if strings.Contains(errb.String(), "error") {
+			t.Errorf("%s: interrupted repos reported as failures:\n%s", args[0], errb.String())
+		}
+	}
+}
+
+// withLister replaces version lookups for the test.
+func withLister(t *testing.T, l metrics.VersionLister) {
+	t.Helper()
+	old := newLister
+	newLister = func(config.Config) metrics.VersionLister { return l }
+	t.Cleanup(func() { newLister = old })
+}
+
+func TestWhoUses(t *testing.T) {
+	work := sandbox(t)
+	factsDir := scanFixture(t, work)
+
+	out, _ := mustRun(t, "who-uses", "terraform-aws-modules/eks/aws", factsDir, "--offline")
+	mustContain(t, "text", out, "registry.terraform.io/terraform-aws-modules/eks/aws: 2 calls in 1 repo",
+		"versions: 17.24.0 (1), 19.21.0 (1)", "live/prod/main.tf:27", "live/staging/main.tf")
+	if strings.Contains(out, "BEHIND") {
+		t.Errorf("offline output has a BEHIND column:\n%s", out)
+	}
+
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir, "--offline", "--format", "json")
+	var uses []map[string]any
+	if err := json.Unmarshal([]byte(out), &uses); err != nil || len(uses) != 2 || uses[0]["repo"] != "local/acme-infra" {
+		t.Errorf("json = %v, %v\n%s", uses, err, out)
+	}
+	out, _ = mustRun(t, "who-uses", "nothing/at/all", factsDir, "--offline", "--format", "json")
+	if strings.TrimSpace(out) != "[]" {
+		t.Errorf("no matches json = %q", out)
+	}
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir, "--offline", "--format", "csv")
+	mustContain(t, "csv", out, "address,repo,owner,module,file,line,source_kind,version,pinned,behind\n", ",live/prod/main.tf,27,registry,19.21.0,exact,\n")
+
+	out, _ = mustRun(t, "who-uses", "hashicorp/aws", factsDir, "--offline", "--provider")
+	mustContain(t, "providers", out, "hashicorp/aws: ", "requirements in 1 repo")
+
+	// Online: drift from the lister, then --behind keeps the laggards.
+	withLister(t, fakeVersions{"registry.terraform.io/terraform-aws-modules/eks/aws": {"17.24.0", "19.21.0", "20.0.0"}})
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir)
+	mustContain(t, "online", out, "BEHIND")
+	out, _ = mustRun(t, "who-uses", "eks/aws", factsDir, "--behind", "2")
+	mustContain(t, "behind 2", out, "1 call in 1 repo", "17.24.0")
+	if strings.Contains(out, "19.21.0") {
+		t.Errorf("--behind 2 kept a call 1 behind:\n%s", out)
+	}
+	_, errs := mustRun(t, "who-uses", "terraform-aws-modules", factsDir) // matches nothing whole-segment
+	if errs != "" {
+		t.Errorf("stderr = %q", errs)
+	}
+
+	// Failed lookups warn once per address.
+	_, errs = mustRun(t, "who-uses", "acme/tf-dns", factsDir)
+	if strings.Count(errs, "warning: version lookup for github.com/acme/tf-dns: not found") != 1 {
+		t.Errorf("stderr = %q", errs)
+	}
+
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"who-uses", "eks/aws"}, "requires at least 2 arg"},
+		{[]string{"who-uses", "eks/aws", factsDir, "--format", "yaml"}, `unknown format "yaml"`},
+		{[]string{"who-uses", "eks/aws", factsDir, "--behind", "1", "--offline"}, "--behind needs version lookups"},
+		{[]string{"who-uses", "eks/aws", filepath.Join(work, "missing")}, "missing"},
+	} {
+		if _, _, err := run(t, tt.args...); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%v: err = %v, want %q", tt.args, err, tt.want)
+		}
+	}
+}
+
+func TestWhoUsesLive(t *testing.T) {
+	work := sandbox(t)
+	factsDir := scanFixture(t, work)
+	withLive(t)
+	withLister(t, fakeVersions{"registry.terraform.io/terraform-aws-modules/eks/aws": {"17.24.0", "19.21.0", "20.0.0"}})
+	out, _ := mustRun(t, "who-uses", "eks/aws", factsDir)
+	mustContain(t, "styled", ansi.Strip(out), "2 calls in 1 repo", "╭", "│ Behind")
 }

@@ -87,7 +87,7 @@ func TestNewRetriesServerErrors(t *testing.T) {
 	r := New()
 	r.Scheme = "http"
 	r.HTTP.Transport.(*ghapi.Transport).Sleep = func(context.Context, time.Duration) error { return nil }
-	r.services = map[string]string{"h": srv.URL + "/"}
+	r.services = map[string]map[string]any{"h": {"modules.v1": srv.URL + "/"}}
 	got, err := r.Versions(context.Background(), source.KindRegistry, "h/a/b/c")
 	if err != nil || len(got) != 1 || hits.Load() != 2 {
 		t.Fatalf("got %v, %v after %d hits; want one retry then success", got, err, hits.Load())
@@ -651,7 +651,56 @@ func TestHTMLErrorPageIsNotQuoted(t *testing.T) {
 	defer srv.Close()
 	r := &Resolver{Scheme: "http"}
 	_, err := r.Versions(context.Background(), source.KindRegistry, strings.TrimPrefix(srv.URL, "http://")+"/a/b/c")
-	if err == nil || strings.Contains(err.Error(), "<") || !strings.HasSuffix(err.Error(), "404 Not Found") {
+	if err == nil || strings.Contains(err.Error(), "<") || !strings.Contains(err.Error(), "404 Not Found (GET http://") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestProviderVersions(t *testing.T) {
+	t.Parallel()
+	var discovery, lookups atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/terraform.json", func(w http.ResponseWriter, r *http.Request) {
+		discovery.Add(1)
+		fmt.Fprintf(w, `{"modules.v1": "/v1/modules/", "providers.v1": "http://%s/v1/providers"}`, r.Host)
+	})
+	mux.HandleFunc("/v1/providers/hashicorp/aws/versions", func(w http.ResponseWriter, _ *http.Request) {
+		lookups.Add(1)
+		fmt.Fprint(w, `{"versions":[{"version":"5.0.0","protocols":["5.0"]},{"version":"6.1.0"}]}`)
+	})
+	mux.HandleFunc("/v1/modules/a/b/c/versions", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"modules":[{"versions":[{"version":"1.0.0"}]}]}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	r := newResolver()
+	for range 2 {
+		got, err := r.Versions(context.Background(), source.KindProvider, host+"/hashicorp/aws")
+		if err != nil || !slices.Equal(got, []string{"5.0.0", "6.1.0"}) {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	}
+	// A module lookup on the same host reuses the discovery document.
+	if _, err := r.Versions(context.Background(), source.KindRegistry, host+"/a/b/c"); err != nil {
+		t.Fatal(err)
+	}
+	if discovery.Load() != 1 || lookups.Load() != 1 {
+		t.Errorf("discovery hits = %d, provider lookups = %d; want 1 and 1", discovery.Load(), lookups.Load())
+	}
+	if _, err := r.Versions(context.Background(), source.KindProvider, host+"/hashicorp/missing"); err == nil || !strings.Contains(err.Error(), "404") {
+		t.Errorf("missing provider: %v", err)
+	}
+	if _, err := r.Versions(context.Background(), source.KindProvider, "hashicorp/aws"); err == nil || !strings.Contains(err.Error(), "want host/namespace/type") {
+		t.Errorf("short address: %v", err)
+	}
+}
+
+func TestProviderVersionsWithoutProviderService(t *testing.T) {
+	t.Parallel()
+	f := newFakeRegistry(t, func(string) string { return "/v1/modules/" }, 0)
+	_, err := newResolver().Versions(context.Background(), source.KindProvider, f.host()+"/hashicorp/aws")
+	if err == nil || !strings.Contains(err.Error(), "no providers.v1") {
 		t.Errorf("err = %v", err)
 	}
 }

@@ -44,7 +44,9 @@ These functions parse untrusted input, transform data, or run once per repo, mod
 
 | Function | Why it is critical | Benchmark | Fuzz |
 | --- | --- | --- | --- |
-| `source.Normalizer.Classify`, `source.Pinning`, `source.TagVersion` | Parse every module source string and git ref as written in someone's repo | yes | yes |
+| `source.Normalizer.Classify`, `source.Pinning`, `source.TagVersion`, `source.ProviderAddress` | Parse every module source, git ref and provider source as written in someone's repo | yes | yes |
+| `usage.Find`, `usage.Match` | Match a user-typed module or provider against every call in an org's facts | yes | yes |
+| SARIF log building (`sink.SARIF`) | Runs over every module call and diagnostic of every repo | yes | |
 | `parse.Module` | Parses arbitrary HCL and JSON from every module directory | yes | yes |
 | `classify.FindModuleDirs` | Walks every file of every cloned repo | yes | |
 | `owners.FromCodeowners` | Parses CODEOWNERS files from every repo | yes | yes |

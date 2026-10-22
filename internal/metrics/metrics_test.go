@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,17 +85,19 @@ func TestComputeCatalog(t *testing.T) {
 		})
 	}
 
-	// Every catalog metric except versions_behind (no lister) is emitted.
+	// Every catalog metric except the versions_behind ones (no lister) is
+	// emitted.
+	drift := map[string]bool{ModuleVersionsBehind: true, ProviderVersionsBehind: true, TerraformVersionsBehind: true}
 	for name := range Help {
-		if name == ModuleVersionsBehind {
+		if drift[name] {
+			if count(m, name) != 0 {
+				t.Errorf("%s emitted without a lister", name)
+			}
 			continue
 		}
 		if count(m, name) == 0 {
 			t.Errorf("metric %s missing from output", name)
 		}
-	}
-	if count(m, ModuleVersionsBehind) != 0 {
-		t.Error("versions_behind emitted without a lister")
 	}
 	// Roots only for provider/required/backend: the child module adds none.
 	if got := count(m, RequiredVersion); got != 3 {
@@ -373,5 +377,76 @@ func TestOrNone(t *testing.T) {
 		if got := orNone(in); got != want {
 			t.Errorf("orNone(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestProviderAndTerraformVersionsBehind(t *testing.T) {
+	t.Parallel()
+	r := facts.ScanResult{Repo: "o/r", Org: "o", Modules: []facts.ModuleFacts{
+		{Kind: facts.KindRoot, RequiredVersion: "~> 1.5.0", Providers: []facts.ProviderReq{
+			{Name: "aws", Source: "hashicorp/aws", Constraint: "~> 4.0"},
+			{Name: "random", Constraint: "~> 3.1"}, // no source: the implied hashicorp/random
+			{Name: "google", Source: "registry.terraform.io/hashicorp/google", Constraint: ">= 4.0"},
+			{Name: "null", Source: "hashicorp/null"},                      // no constraint: no lookup
+			{Name: "terraform", Source: "terraform.io/builtin/terraform"}, // built in: no lookup
+			{Name: "broken", Source: "acme/broken", Constraint: "~> 1.0"}, // lookup fails
+		}},
+		{Kind: facts.KindRoot, RequiredVersion: "~> 1.9"},
+		{Kind: facts.KindChild, RequiredVersion: "~> 0.12.0", Providers: []facts.ProviderReq{
+			{Name: "aws", Source: "hashicorp/aws", Constraint: ">= 3.0"}, // selects the latest
+		}},
+	}}
+	lister := &fakeLister{
+		byAddr: map[string][]string{
+			"registry.terraform.io/hashicorp/aws":    {"3.76.1", "4.0.0", "4.67.0", "5.0.0", "5.10.0", "6.0.0"},
+			"registry.terraform.io/hashicorp/random": {"3.1.0", "3.6.0"},
+			"registry.terraform.io/hashicorp/google": {"4.0.0", "6.1.0"},
+			TerraformReleases:                        {"v0.12.31", "v1.5.0", "v1.5.7", "v1.6.0", "v1.9.0", "v1.10.0", "v1.11.0-beta1"},
+		},
+		errs: map[string]error{"registry.terraform.io/acme/broken": errors.New("boom")},
+	}
+	var failed []string
+	m := Compute(context.Background(), []facts.ScanResult{r}, Options{
+		Versions:      lister,
+		OnLookupError: func(addr string, _ error) { failed = append(failed, addr) },
+	})
+	// ~> 4.0 selects 4.67.0, behind the 5.0, 5.10 and 6.0 lines; the child's
+	// >= 3.0 selects 6.0.0 (0), and the larger value wins.
+	for provider, want := range map[string]float64{"hashicorp/aws": 3, "hashicorp/random": 0, "hashicorp/google": 0} {
+		s, ok := find(m, ProviderVersionsBehind, "provider", provider)
+		if !ok || s.Value != want {
+			t.Errorf("%s: %v, %v; want %v", provider, s.Value, ok, want)
+		}
+	}
+	if got := count(m, ProviderVersionsBehind); got != 3 {
+		t.Errorf("provider series = %d, want 3", got)
+	}
+	// Roots only: ~> 1.5.0 selects 1.5.7, behind 1.6, 1.9 and 1.10; the
+	// child's ~> 0.12.0 does not count.
+	if s, ok := find(m, TerraformVersionsBehind, "repo", "o/r"); !ok || s.Value != 3 {
+		t.Errorf("terraform behind = %v, %v; want 3", s.Value, ok)
+	}
+	if !slices.Equal(failed, []string{"registry.terraform.io/acme/broken"}) {
+		t.Errorf("lookup errors for %v", failed)
+	}
+	for _, c := range lister.calls {
+		if strings.Contains(c, "null") || strings.Contains(c, "builtin") {
+			t.Errorf("unexpected lookup %q", c)
+		}
+	}
+
+	// Prefetch asks for the same lookups, once each.
+	pre := &fakeLister{byAddr: lister.byAddr, errs: lister.errs}
+	Prefetch(context.Background(), []facts.ScanResult{r}, pre, 1, nil)
+	want := []string{
+		"provider registry.terraform.io/hashicorp/aws", "provider registry.terraform.io/hashicorp/random",
+		"provider registry.terraform.io/hashicorp/google", "provider registry.terraform.io/acme/broken",
+		"git " + TerraformReleases,
+	}
+	slices.Sort(want)
+	got := slices.Clone(pre.calls)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("prefetched %v, want %v", got, want)
 	}
 }

@@ -16,6 +16,7 @@ tfmetrics version [flags]
 
 ```
       --config string   config file (default: the first tfmetrics.yaml or tfmetrics.yml in $XDG_CONFIG_HOME/tfmetrics, ~/.config/tfmetrics, $HOME, then the current directory)
+      --plain           print plain lines: no colors, styling or live progress, as when output is not a terminal
 ```
 
 ### SEE ALSO

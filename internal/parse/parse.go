@@ -94,7 +94,7 @@ func Module(repoRoot, rel string, opts Options) facts.ModuleFacts {
 	m.Providers = providers(mod, r)
 	m.Resources, m.Lifecycle = resources(mod.ManagedResources, r, "")
 	m.DataSources, _ = resources(mod.DataResources, r, "data.")
-	m.ModuleCalls = moduleCalls(mod.ModuleCalls, r, rel, opts.Normalizer)
+	m.ModuleCalls = moduleCalls(mod.ModuleCalls, r, repoRoot, rel, opts.Normalizer)
 	for _, v := range mod.Variables {
 		m.Variables = append(m.Variables, facts.VarFacts{
 			Name:           v.Name,
@@ -269,7 +269,7 @@ func resources(in map[string]*tfconfig.Resource, r raw, prefix string) ([]facts.
 }
 
 // moduleCalls converts tfconfig module calls, classifying each source.
-func moduleCalls(in map[string]*tfconfig.ModuleCall, r raw, rel string, n *source.Normalizer) []facts.ModuleCall {
+func moduleCalls(in map[string]*tfconfig.ModuleCall, r raw, repoRoot, rel string, n *source.Normalizer) []facts.ModuleCall {
 	var out []facts.ModuleCall
 	for _, c := range in {
 		ref := n.Classify(c.Source)
@@ -288,6 +288,8 @@ func moduleCalls(in map[string]*tfconfig.ModuleCall, r raw, rel string, n *sourc
 			Pinned:     source.Pinning(ref, c.Version),
 			Count:      rb.count,
 			ForEach:    rb.forEach,
+			File:       relFile(repoRoot, c.Pos.Filename),
+			Line:       c.Pos.Line,
 		})
 	}
 	return out

@@ -1,6 +1,7 @@
 package source
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -405,6 +406,67 @@ func BenchmarkTagVersion(b *testing.B) {
 	for b.Loop() {
 		for _, r := range []string{"v1.2.0", "tags/0.4.0", "modules/vpc/v1.2.0", "feature/new-vpc"} {
 			_, _, _ = TagVersion(r)
+		}
+	}
+}
+
+func TestProviderAddress(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		src, name, want string
+		ok              bool
+	}{
+		{"hashicorp/aws", "aws", "registry.terraform.io/hashicorp/aws", true},
+		{"", "aws", "registry.terraform.io/hashicorp/aws", true},
+		{"  HashiCorp/AWS ", "aws", "registry.terraform.io/hashicorp/aws", true},
+		{"registry.terraform.io/hashicorp/google", "google", "registry.terraform.io/hashicorp/google", true},
+		{"registry.opentofu.org/hashicorp/aws", "aws", "registry.opentofu.org/hashicorp/aws", true},
+		{"app.terraform.io/acme/internal", "internal", "app.terraform.io/acme/internal", true},
+		{"terraform.io/builtin/terraform", "terraform", "", false},
+		{"", "terraform", "", false},
+		{"", "", "", false},
+		{"", "a/b", "", false},
+		{"a/b/c/d", "x", "", false},
+		{"hashicorp/", "aws", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := ProviderAddress(tt.src, tt.name)
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("ProviderAddress(%q, %q) = %q, %v; want %q, %v", tt.src, tt.name, got, ok, tt.want, tt.ok)
+		}
+	}
+	if ProviderLabel("registry.terraform.io/hashicorp/aws") != "hashicorp/aws" || ProviderLabel("app.terraform.io/a/b") != "app.terraform.io/a/b" {
+		t.Error("ProviderLabel")
+	}
+}
+
+func FuzzProviderAddress(f *testing.F) {
+	for _, s := range [][2]string{{"hashicorp/aws", "aws"}, {"", "aws"}, {"registry.terraform.io/hashicorp/google", ""}, {"terraform.io/builtin/terraform", ""}, {"a/b/c/d", ""}} {
+		f.Add(s[0], s[1])
+	}
+	f.Fuzz(func(t *testing.T, src, name string) {
+		addr, ok := ProviderAddress(src, name)
+		if !ok {
+			if addr != "" {
+				t.Fatalf("ProviderAddress(%q, %q) = %q with ok false", src, name, addr)
+			}
+			return
+		}
+		parts := strings.Split(addr, "/")
+		if len(parts) != 3 || slices.Contains(parts, "") || addr != strings.ToLower(addr) {
+			t.Fatalf("ProviderAddress(%q, %q) = %q, not host/namespace/type", src, name, addr)
+		}
+		// An address reads back as itself.
+		if again, ok := ProviderAddress(addr, ""); !ok || again != addr {
+			t.Fatalf("%q does not round-trip: %q, %v", addr, again, ok)
+		}
+	})
+}
+
+func BenchmarkProviderAddress(b *testing.B) {
+	for b.Loop() {
+		for _, s := range [][2]string{{"hashicorp/aws", "aws"}, {"", "random"}, {"registry.terraform.io/hashicorp/google", "google"}} {
+			_, _ = ProviderAddress(s[0], s[1])
 		}
 	}
 }

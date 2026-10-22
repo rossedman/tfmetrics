@@ -76,8 +76,9 @@ The `explain` report continues with the module list, remote module calls and par
 | --- | --- |
 | `tfmetrics scan <path\|repo>...` | Parse local directories, git URLs or GitHub `owner/name` repos into facts JSON, one file per repo. With `--sink`, also aggregate and emit, which suits a per-repo PR check (`tfmetrics scan . --sink markdown`). |
 | `tfmetrics org` | Discover repos in one or more GitHub orgs, apply name, topic and custom property filters, then shallow-clone and scan the matches in parallel. Unchanged repos reuse cached facts. |
-| `tfmetrics aggregate <facts>...` | Compute the metrics catalog from facts files and write it to the sinks: `json`, `openmetrics`, `otlp`, `csv`, `parquet`, `markdown`. |
+| `tfmetrics aggregate <facts>...` | Compute the metrics catalog from facts files and write it to the sinks: `json`, `openmetrics`, `otlp`, `csv`, `parquet`, `markdown`, `sarif`. |
 | `tfmetrics explain <facts>...` | Print a human-readable report per repo: inventory, hygiene score and its checks, remote module pinning, diagnostics. |
+| `tfmetrics who-uses <module> <facts>...` | List every call to a module, or with `--provider` every requirement of a provider: repo, owner, file and line, version, and how far behind it is. `--behind N` lists the callers still to upgrade. |
 
 `tfmetrics version` prints the version, commit and build date. Run `tfmetrics <command> --help` for every flag.
 
@@ -126,6 +127,8 @@ Metrics carry `org`, and per-repo metrics add `repo` and `owner` plus metric-spe
 | `tf_data_sources_declared` | Data source blocks declared |
 | `tf_module_calls` | Calls to each module address and version |
 | `tf_module_versions_behind` | Major or minor releases between the pinned version and the latest |
+| `tf_provider_versions_behind` | Major or minor releases between the provider version a constraint selects and the latest |
+| `tf_terraform_versions_behind` | Major or minor Terraform releases between the version `required_version` selects and the latest |
 | `tf_module_calls_unpinned` | Remote module calls with no version or ref |
 | `tf_provider_constraint` | Root modules per distinct provider version constraint |
 | `tf_required_version` | Root modules per Terraform core version constraint |

@@ -14,7 +14,15 @@ The [config file reference](reference/config.md) lists every key with its type, 
 
 Without `--config`, tfmetrics looks for `tfmetrics.yaml` (or `tfmetrics.yml`) in `$XDG_CONFIG_HOME/tfmetrics/`, `~/.config/tfmetrics/`, `~/` and the current directory, in that order, and uses the first one it finds. Only those two names are searched, so the `tfmetrics` binary sitting in the current directory is never mistaken for config. A missing file is fine; a file you name with `--config` must exist. Its format comes from its extension (`.yaml`, `.yml`, `.json` or `.toml`); any other name, such as `tfmetrics.conf`, is read as YAML.
 
-Secrets never go in the file. The file names an environment variable (`token_env`, `registry_token_env`) and tfmetrics reads the value from there.
+Secrets never go in the file. The file names an environment variable (`token_env`) and tfmetrics reads the value from there.
+
+## Terminal output
+
+On a terminal, `scan`, `org` and `aggregate` show live progress on stderr: a progress bar with counts, the rate and the time left, a countdown while GitHub's rate limit pauses discovery, and failures printed above the bar as they happen. Each run ends with a summary, and `explain` draws its report with tables and a hygiene score bar.
+
+When stderr is not a terminal, as in CI or when output is piped, every repo prints as a plain line instead, the same as before this view existed. `--plain` forces plain lines on a terminal too, and `NO_COLOR=1` keeps the live view but drops its colors.
+
+Ctrl-C stops a run cleanly: repos already scanned keep their facts files, the rest are left unscanned, and the command exits with status 130. A second Ctrl-C exits at once.
 
 ## Full example
 
@@ -181,5 +189,7 @@ A list where each item has exactly one key, the sink name, whose value is that s
 | `parquet` | `path` | `--out` | Directory for `modules.parquet` and `module_calls.parquet`. |
 | `markdown` | `path` | `-` | File to write, or `-` for stdout. |
 | `markdown` | `step_summary` | `false` | Also append to the file named by `$GITHUB_STEP_SUMMARY`. |
+| `sarif` | `path` | `<out>/sarif` | Directory for one SARIF log per repo. |
+| `sarif` | `min_behind` | `0` (off) | Release lines behind before a module call is reported as outdated. |
 
 File sinks write to local paths only. For object storage, write locally and upload (`aws s3 cp`, `gcloud storage cp`).

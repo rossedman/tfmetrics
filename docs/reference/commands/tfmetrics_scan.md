@@ -33,13 +33,14 @@ tfmetrics scan <path|repo>... [flags]
   -h, --help              help for scan
       --out string        directory to write facts files to (default "facts")
       --ref string        branch, tag or commit to clone for remote repos (default: the default branch)
-      --sink strings      also aggregate and emit to these sinks: json, openmetrics, otlp, csv, parquet, markdown
+      --sink strings      also aggregate and emit to these sinks: json, openmetrics, otlp, csv, parquet, markdown, sarif
 ```
 
 ### Options inherited from parent commands
 
 ```
       --config string   config file (default: the first tfmetrics.yaml or tfmetrics.yml in $XDG_CONFIG_HOME/tfmetrics, ~/.config/tfmetrics, $HOME, then the current directory)
+      --plain           print plain lines: no colors, styling or live progress, as when output is not a terminal
 ```
 
 ### SEE ALSO

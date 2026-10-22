@@ -16,7 +16,7 @@ tfmetrics is a five-stage pipeline with one file format in the middle. Scanning 
 
 **4. Extract.** The result is one [facts file](reference/facts.md) per repo, `facts/<org>__<repo>.json`. Facts are cached by commit SHA plus a hash of the repo's topics, properties and scan settings, so a repo whose `HEAD` has not moved is not cloned at all.
 
-**5. Aggregate and emit.** `tfmetrics aggregate` reads facts files and computes the 17 gauges of the [metrics catalog](reference/metrics.md) and the hygiene score, then writes them to every [sink](guides/dashboards.md). It also looks up the latest versions of each module for `tf_module_versions_behind` unless you pass `--offline`.
+**5. Aggregate and emit.** `tfmetrics aggregate` reads facts files and computes the 19 gauges of the [metrics catalog](reference/metrics.md) and the hygiene score, then writes them to every [sink](guides/dashboards.md). It also looks up the latest versions of each module, provider and Terraform itself for the `*_versions_behind` gauges unless you pass `--offline`.
 
 ## Why facts sit in the middle
 

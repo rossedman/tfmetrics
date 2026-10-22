@@ -55,6 +55,7 @@ A module is a directory that holds `.tf` or `.tf.json` files. Directories named 
 | `version` | string | The version constraint for registry sources, the `?ref=` for git sources, or empty. |
 | `pinned` | string | `exact`, `range` or `none`; empty for local calls. |
 | `count`, `for_each` | boolean | Present and true when the block uses them. |
+| `file`, `line` | string, number | Where the `module` block is: the repo-relative file and its line. Facts written before this field existed leave both out. |
 
 How `pinned` is decided:
 

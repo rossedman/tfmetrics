@@ -31,7 +31,7 @@ type Env struct {
 }
 
 // Names lists the available sinks.
-var Names = []string{"json", "openmetrics", "otlp", "csv", "parquet", "markdown"}
+var Names = []string{"json", "openmetrics", "otlp", "csv", "parquet", "markdown", "sarif"}
 
 // Spec names a sink and its options.
 type Spec struct {
@@ -79,6 +79,8 @@ func New(s Spec, env Env) (Sink, error) {
 		return &Table{Dir: o.str("path", env.OutDir), Format: "csv"}, nil
 	case "parquet":
 		return &Table{Dir: o.str("path", env.OutDir), Format: "parquet"}, nil
+	case "sarif":
+		return &SARIF{Dir: o.str("path", filepath.Join(env.OutDir, "sarif")), MinBehind: o.int("min_behind", 0)}, nil
 	case "markdown":
 		return &Markdown{Path: o.str("path", "-"), StepSummary: o.bool("step_summary", false), Weights: env.Weights, Stdout: env.Stdout}, nil
 	}
@@ -93,6 +95,21 @@ func (o options) str(k, def string) string {
 	if v, ok := o[k]; ok && v != nil {
 		if s := fmt.Sprint(v); s != "" {
 			return s
+		}
+	}
+	return def
+}
+
+// int returns an integer option or def.
+func (o options) int(k string, def int) int {
+	switch v := o[k].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return n
 		}
 	}
 	return def

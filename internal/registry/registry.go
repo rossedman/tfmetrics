@@ -48,7 +48,7 @@ type Resolver struct {
 
 	mu       sync.Mutex
 	cache    map[string]*result
-	services map[string]string
+	services map[string]map[string]any // discovery document per host
 }
 
 // result is one cached lookup; done closes once it is filled in.
@@ -99,6 +99,8 @@ func (r *Resolver) Versions(ctx context.Context, kind, address string) ([]string
 		res.versions, res.err = r.registryVersions(ctx, address)
 	case source.KindGit:
 		res.versions, res.err = r.gitVersions(ctx, address)
+	case source.KindProvider:
+		res.versions, res.err = r.providerVersions(ctx, address)
 	}
 	close(res.done)
 	return res.versions, res.err
@@ -112,7 +114,7 @@ func (r *Resolver) registryVersions(ctx context.Context, address string) ([]stri
 		return nil, fmt.Errorf("registry address %q: want host/namespace/name/provider", address)
 	}
 	host := parts[0]
-	base, err := r.modulesBase(ctx, host)
+	base, err := r.serviceBase(ctx, host, "modules.v1")
 	if err != nil {
 		return nil, err
 	}
@@ -136,26 +138,54 @@ func (r *Resolver) registryVersions(ctx context.Context, address string) ([]stri
 	return out, nil
 }
 
-// modulesBase returns the modules.v1 base URL for a host via service discovery.
-func (r *Resolver) modulesBase(ctx context.Context, host string) (string, error) {
+// providerVersions calls the provider registry protocol's versions endpoint
+// for a host/namespace/type address.
+func (r *Resolver) providerVersions(ctx context.Context, address string) ([]string, error) {
+	parts := strings.Split(address, "/")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("provider address %q: want host/namespace/type", address)
+	}
+	base, err := r.serviceBase(ctx, parts[0], "providers.v1")
+	if err != nil {
+		return nil, err
+	}
+	var body struct {
+		Versions []struct {
+			Version string `json:"version"`
+		} `json:"versions"`
+	}
+	if err := r.getJSON(ctx, parts[0], base+parts[1]+"/"+parts[2]+"/versions", &body); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(body.Versions))
+	for _, v := range body.Versions {
+		out = append(out, v.Version)
+	}
+	return out, nil
+}
+
+// serviceBase returns the base URL of a registry service, such as
+// "modules.v1", from host's service discovery document, which is fetched once
+// per run.
+func (r *Resolver) serviceBase(ctx context.Context, host, service string) (string, error) {
 	r.mu.Lock()
 	if r.services == nil {
-		r.services = map[string]string{}
+		r.services = map[string]map[string]any{}
 	}
-	if b, ok := r.services[host]; ok {
-		r.mu.Unlock()
-		return b, nil
-	}
+	disco, ok := r.services[host]
 	r.mu.Unlock()
-
 	root := r.scheme() + "://" + host
-	var disco map[string]any
-	if err := r.getJSON(ctx, host, root+"/.well-known/terraform.json", &disco); err != nil {
-		return "", fmt.Errorf("service discovery for %s: %w", host, err)
+	if !ok {
+		if err := r.getJSON(ctx, host, root+"/.well-known/terraform.json", &disco); err != nil {
+			return "", fmt.Errorf("service discovery for %s: %w", host, err)
+		}
+		r.mu.Lock()
+		r.services[host] = disco
+		r.mu.Unlock()
 	}
-	p, _ := disco["modules.v1"].(string)
+	p, _ := disco[service].(string)
 	if p == "" {
-		return "", fmt.Errorf("service discovery for %s: no modules.v1", host)
+		return "", fmt.Errorf("service discovery for %s: no %s", host, service)
 	}
 	base := p
 	if !strings.HasPrefix(p, "http://") && !strings.HasPrefix(p, "https://") {
@@ -164,9 +194,6 @@ func (r *Resolver) modulesBase(ctx context.Context, host string) (string, error)
 	if !strings.HasSuffix(base, "/") {
 		base += "/"
 	}
-	r.mu.Lock()
-	r.services[host] = base
-	r.mu.Unlock()
 	return base, nil
 }
 
@@ -199,10 +226,12 @@ func (r *Resolver) getJSON(ctx context.Context, host, u string, v any) error {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		// The status leads, so a message cut to one line still says what went
+		// wrong.
 		if detail := errorDetail(resp.Header.Get("Content-Type"), b); detail != "" {
-			return fmt.Errorf("GET %s: %s: %s", u, resp.Status, detail)
+			return fmt.Errorf("%s: %s (GET %s)", resp.Status, detail, u)
 		}
-		return fmt.Errorf("GET %s: %s", u, resp.Status)
+		return fmt.Errorf("%s (GET %s)", resp.Status, u)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
 }
