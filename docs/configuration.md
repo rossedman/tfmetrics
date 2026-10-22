@@ -7,8 +7,10 @@ Every setting lives in one `tfmetrics.yaml`, and every key has a default, so the
 Settings are merged in this order, highest first:
 
 1. Command-line flags (`--out`, `--ref`, `--concurrency`, `--cache-dir`, `--sink`, `--org` and the filter flags).
-2. Environment variables with the `TFMETRICS_` prefix. Dots and dashes become underscores: `--out` is `TFMETRICS_OUT`.
+2. Environment variables with the `TFMETRICS_` prefix. Dots and dashes become underscores: `--out` is `TFMETRICS_OUT`. A variable is only read for a key the file sets or a flag binds; see [Precedence](reference/config.md#precedence).
 3. The config file.
+
+The [config file reference](reference/config.md) lists every key with its type, default and override.
 
 Without `--config`, tfmetrics looks for `tfmetrics.yaml` (or `tfmetrics.yml`) in `$XDG_CONFIG_HOME/tfmetrics/`, `~/.config/tfmetrics/`, `~/` and the current directory, in that order, and uses the first one it finds. Only those two names are searched, so the `tfmetrics` binary sitting in the current directory is never mistaken for config. A missing file is fine; a file you name with `--config` must exist. Its format comes from its extension (`.yaml`, `.yml`, `.json` or `.toml`); any other name, such as `tfmetrics.conf`, is read as YAML.
 
