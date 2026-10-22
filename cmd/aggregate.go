@@ -45,7 +45,7 @@ skips them.`,
 		}
 		var lister metrics.VersionLister
 		if offline, _ := cmd.Flags().GetBool("offline"); !offline {
-			lister = app.Resolver(cfg)
+			lister = newLister(cfg)
 		}
 		m := aggregate(cmd, cfg, results, lister)
 		out := v.GetString("out")

@@ -1,6 +1,7 @@
 // Package registry looks up the available versions of a module: from the
 // Terraform registry API for public modules, from the private registry for
-// internal ones, and from git tags for git sources. Lookups are cached for the
+// internal ones, from git tags for git sources, and from object keys for
+// modules kept in S3. Lookups are cached for the
 // life of a Resolver, which is one run.
 package registry
 
@@ -45,6 +46,10 @@ type Resolver struct {
 	GitTags GitTagLister
 	// Scheme is the URL scheme for registry calls; "https" unless a test sets it.
 	Scheme string
+	// S3 lists object keys for modules kept in S3; defaults to the AWS SDK
+	// with the standard credential chain.
+	S3 S3Lister
+	awsState
 
 	mu       sync.Mutex
 	cache    map[string]*result
@@ -101,6 +106,8 @@ func (r *Resolver) Versions(ctx context.Context, kind, address string) ([]string
 		res.versions, res.err = r.gitVersions(ctx, address)
 	case source.KindProvider:
 		res.versions, res.err = r.providerVersions(ctx, address)
+	case source.KindS3:
+		res.versions, res.err = r.s3Versions(ctx, address)
 	}
 	close(res.done)
 	return res.versions, res.err

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -993,6 +994,13 @@ func TestLiveOrgDiscovery(t *testing.T) {
 	mustContain(t, "discovery", ansi.Strip(errs), "✓ Found 1 repo in acme")
 }
 
+// TestMain keeps every test off the network: commands that look up versions
+// get a lister that knows no versions unless a test sets one with withLister.
+func TestMain(m *testing.M) {
+	newLister = func(config.Config) metrics.VersionLister { return fakeVersions{} }
+	os.Exit(m.Run())
+}
+
 // fakeVersions answers version lookups from a map.
 type fakeVersions map[string][]string
 
@@ -1154,4 +1162,80 @@ func TestWhoUsesLive(t *testing.T) {
 	withLister(t, fakeVersions{"registry.terraform.io/terraform-aws-modules/eks/aws": {"17.24.0", "19.21.0", "20.0.0"}})
 	out, _ := mustRun(t, "who-uses", "eks/aws", factsDir)
 	mustContain(t, "styled", ansi.Strip(out), "2 calls in 1 repo", "╭", "│ Behind")
+}
+
+// s3Repo makes a repo whose modules come from S3: two versions of one module
+// in a version directory, one with the version in the file name, and one
+// pinned only by S3 object version.
+func s3Repo(t *testing.T, parent string) string {
+	t.Helper()
+	dir := filepath.Join(parent, "s3-mods")
+	writeFile(t, filepath.Join(dir, "main.tf"), `terraform {
+  backend "s3" {}
+}
+
+module "vpc" {
+  source = "s3::https://s3-eu-west-1.amazonaws.com/acme-tf/vpc/v1.2.0/vpc.zip"
+}
+
+module "vpc_old" {
+  source = "s3::https://s3-eu-west-1.amazonaws.com/acme-tf/vpc/v1.0.0/vpc.zip"
+}
+
+module "eks" {
+  source = "https://acme-tf.s3.amazonaws.com/eks-3.1.0.zip"
+}
+
+module "dns" {
+  source = "s3::https://s3.amazonaws.com/acme-tf/dns.zip?version=3HL4kqtJ"
+}
+`)
+	return dir
+}
+
+func TestS3Modules(t *testing.T) {
+	work := sandbox(t)
+	mustRun(t, "scan", s3Repo(t, work), "--out", "facts")
+	withLister(t, fakeVersions{
+		"s3-eu-west-1.amazonaws.com/acme-tf/vpc/*/vpc.zip": {"v1.0.0", "v1.2.0", "v1.3.0", "v2.0.0"},
+		"acme-tf.s3.amazonaws.com/eks-*.zip":               {"3.1.0"},
+	})
+
+	out, _ := mustRun(t, "who-uses", "acme-tf/vpc/*/vpc.zip", "facts")
+	mustContain(t, "who-uses", out, "s3-eu-west-1.amazonaws.com/acme-tf/vpc/*/vpc.zip: 2 calls in 1 repo",
+		"versions: v1.0.0 (1), v1.2.0 (1)", "v1.2.0   exact   2", "v1.0.0   exact   3")
+
+	mustRun(t, "aggregate", "facts", "--sink", "json", "--out", "m")
+	b, err := os.ReadFile(filepath.Join(work, "m", "metrics.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m metrics.Metrics
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	behind := map[string]float64{}
+	unpinned := 0.0
+	for _, s := range m.Series {
+		switch s.Name {
+		case metrics.ModuleVersionsBehind:
+			behind[s.Labels["address"]] = s.Value
+		case metrics.ModuleCallsUnpinned:
+			unpinned += s.Value
+		}
+	}
+	want := map[string]float64{"s3-eu-west-1.amazonaws.com/acme-tf/vpc/*/vpc.zip": 3, "acme-tf.s3.amazonaws.com/eks-*.zip": 0}
+	if !reflect.DeepEqual(behind, want) {
+		t.Errorf("versions behind = %v, want %v", behind, want)
+	}
+	if unpinned != 0 {
+		t.Errorf("an object version is a pin, but %v calls are unpinned", unpinned)
+	}
+
+	// An alias sends the module to its git repo, looked up by tag.
+	writeFile(t, filepath.Join(work, "alias.yaml"), "modules:\n  aliases:\n    \"s3::https://s3-eu-west-1.amazonaws.com/acme-tf/vpc/*/vpc.zip\": github.com/acme/terraform-aws-vpc\n")
+	mustRun(t, "scan", s3Repo(t, work), "--out", "facts", "--config", "alias.yaml")
+	withLister(t, fakeVersions{"github.com/acme/terraform-aws-vpc": {"v1.0.0", "v1.2.0", "v1.4.0"}})
+	out, _ = mustRun(t, "who-uses", "acme/terraform-aws-vpc", "facts", "--config", "alias.yaml")
+	mustContain(t, "aliased", out, "github.com/acme/terraform-aws-vpc: 2 calls in 1 repo", "v1.2.0   exact   1", "v1.0.0   exact   2")
 }

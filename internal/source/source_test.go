@@ -47,11 +47,19 @@ func TestClassify(t *testing.T) {
 		{"https github no suffix", "https://github.com/acme/tf-iam?ref=1.2.3", Ref{Kind: KindGit, Address: "github.com/acme/tf-iam", Ref: "1.2.3"}},
 		{"https creds stripped", "https://user:tok@git.acme.io/infra/mods.git", Ref{Kind: KindGit, Address: "git.acme.io/infra/mods"}},
 		{"s3 forced", "s3::https://s3-eu-west-1.amazonaws.com/acme-mods/vpc.zip", Ref{Kind: KindS3, Address: "s3-eu-west-1.amazonaws.com/acme-mods/vpc.zip"}},
-		{"s3 bucket url", "https://acme-mods.s3.amazonaws.com/vpc.zip?versionId=1", Ref{Kind: KindS3, Address: "acme-mods.s3.amazonaws.com/vpc.zip"}},
+		{"s3 bucket url", "https://acme-mods.s3.amazonaws.com/vpc.zip?versionId=1", Ref{Kind: KindS3, Address: "acme-mods.s3.amazonaws.com/vpc.zip", Ref: "1"}},
+		{"s3 object version", "s3::https://s3.amazonaws.com/b/vpc.zip?version=3HL4kqtJ", Ref{Kind: KindS3, Address: "s3.amazonaws.com/b/vpc.zip", Ref: "3HL4kqtJ"}},
+		{"s3 version directory", "s3::https://s3-eu-west-1.amazonaws.com/acme-tf/vpc/v1.2.0/vpc.zip", Ref{Kind: KindS3, Address: "s3-eu-west-1.amazonaws.com/acme-tf/vpc/*/vpc.zip", Ref: "v1.2.0"}},
+		{"s3 version in file name", "https://acme-tf.s3.amazonaws.com/modules/vpc-1.4.0.zip", Ref{Kind: KindS3, Address: "acme-tf.s3.amazonaws.com/modules/vpc-*.zip", Ref: "1.4.0"}},
+		{"s3 last version wins", "s3::https://s3.amazonaws.com/b/1.0.0/vpc_v2.3.4.tar.gz", Ref{Kind: KindS3, Address: "s3.amazonaws.com/b/1.0.0/vpc_*.tar.gz", Ref: "v2.3.4"}},
+		{"s3 path version beats object version", "s3::https://s3.amazonaws.com/b/vpc-1.0.0.zip?version=x", Ref{Kind: KindS3, Address: "s3.amazonaws.com/b/vpc-*.zip", Ref: "1.0.0"}},
+		{"s3 subdir", "s3::https://s3.amazonaws.com/b/mods-1.0.0.zip//vpc", Ref{Kind: KindS3, Address: "s3.amazonaws.com/b/mods-*.zip//vpc", Ref: "1.0.0"}},
+		{"s3 version in bucket name kept", "s3::https://s3.amazonaws.com/tf-1.0.0/vpc.zip", Ref{Kind: KindS3, Address: "s3.amazonaws.com/tf-1.0.0/vpc.zip"}},
 		{"gcs forced", "gcs::https://www.googleapis.com/storage/v1/acme-mods/vpc.zip", Ref{Kind: KindGCS, Address: "www.googleapis.com/storage/v1/acme-mods/vpc.zip"}},
 		{"gcs googleapis url", "https://www.googleapis.com/storage/v1/acme/vpc.zip", Ref{Kind: KindGCS, Address: "www.googleapis.com/storage/v1/acme/vpc.zip"}},
 		{"googleapis non-storage is http", "https://www.googleapis.com/other/x.zip", Ref{Kind: KindHTTP, Address: "www.googleapis.com/other/x.zip"}},
-		{"http archive", "https://example.com/mods/vpc-1.2.3.zip", Ref{Kind: KindHTTP, Address: "example.com/mods/vpc-1.2.3.zip"}},
+		{"http archive", "https://example.com/mods/vpc-1.2.3.zip", Ref{Kind: KindHTTP, Address: "example.com/mods/vpc-*.zip", Ref: "1.2.3"}},
+		{"gcs version", "gcs::https://www.googleapis.com/storage/v1/acme/vpc/1.2.3/vpc.zip", Ref{Kind: KindGCS, Address: "www.googleapis.com/storage/v1/acme/vpc/*/vpc.zip", Ref: "1.2.3"}},
 		{"plain http", "http://example.com/vpc.tgz?x=1", Ref{Kind: KindHTTP, Address: "example.com/vpc.tgz"}},
 		{"forced http", "http::https://example.com/vpc.zip", Ref{Kind: KindHTTP, Address: "example.com/vpc.zip"}},
 		{"forced https", "https::https://example.com/vpc.zip", Ref{Kind: KindHTTP, Address: "example.com/vpc.zip"}},
@@ -84,12 +92,15 @@ func TestClassifyGitHubWithSubpathIsNotRegistry(t *testing.T) {
 func TestAliases(t *testing.T) {
 	t.Parallel()
 	n := NewNormalizer([]string{"tf.acme.io"}, map[string]string{
-		"git::https://github.com/acme/tf-vpc.git": "tf.acme.io/platform/vpc/aws",
-		"git@github.com:acme/tf-eks.git":          "app.terraform.io/acme/eks/aws",
-		"https://example.com/old.zip":             "tf.acme.io/platform/old/aws",
-		"github.com/acme/tf-misc":                 "misc-name",
-		"terraform-aws-modules/vpc/aws":           "tf.acme.io/mirror/vpc/aws",
-		"./never":                                 "ignored",
+		"git::https://github.com/acme/tf-vpc.git":            "tf.acme.io/platform/vpc/aws",
+		"git@github.com:acme/tf-eks.git":                     "app.terraform.io/acme/eks/aws",
+		"https://example.com/old.zip":                        "tf.acme.io/platform/old/aws",
+		"github.com/acme/tf-misc":                            "misc-name",
+		"terraform-aws-modules/vpc/aws":                      "tf.acme.io/mirror/vpc/aws",
+		"s3::https://s3.amazonaws.com/acme-tf/vpc/*/vpc.zip": "git::https://github.com/acme/terraform-aws-vpc.git",
+		"https://acme-tf.s3.amazonaws.com/eks-1.0.0.zip":     "tf.acme.io/platform/eks/aws",
+		"https://acme-tf.s3.amazonaws.com/odd.zip":           "not a module source",
+		"./never": "ignored",
 	})
 	tests := []struct {
 		name string
@@ -102,6 +113,9 @@ func TestAliases(t *testing.T) {
 		{"http alias to registry", "https://example.com/old.zip", Ref{Kind: KindPrivateRegistry, Address: "tf.acme.io/platform/old/aws"}},
 		{"alias to non-registry keeps kind", "github.com/acme/tf-misc", Ref{Kind: KindGit, Address: "misc-name"}},
 		{"registry alias keeps kind", "terraform-aws-modules/vpc/aws", Ref{Kind: KindRegistry, Address: "tf.acme.io/mirror/vpc/aws"}},
+		{"s3 alias to git", "s3::https://s3.amazonaws.com/acme-tf/vpc/v1.4.0/vpc.zip", Ref{Kind: KindGit, Address: "github.com/acme/terraform-aws-vpc", Ref: "v1.4.0"}},
+		{"s3 alias written with a version", "https://acme-tf.s3.amazonaws.com/eks-2.1.0.zip", Ref{Kind: KindPrivateRegistry, Address: "tf.acme.io/platform/eks/aws", Ref: "2.1.0"}},
+		{"s3 alias to non-module keeps kind", "https://acme-tf.s3.amazonaws.com/odd.zip", Ref{Kind: KindS3, Address: "not a module source"}},
 		{"no alias", "github.com/acme/other", Ref{Kind: KindGit, Address: "github.com/acme/other"}},
 	}
 	for _, tt := range tests {

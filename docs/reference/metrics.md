@@ -36,7 +36,7 @@ A repo with no Terraform contributes no series at all, and does not count in `tf
 
 ### tf_module_versions_behind
 
-How far a repo lags behind the latest release of a module it calls. It is computed only for calls to a registry, a private registry or a git source that have a version or ref, and only when you do not pass `--offline`.
+How far a repo lags behind the latest release of a module it calls. It is computed only for calls to a registry, a private registry, a git source or an S3 archive that have a version, ref or version in the path, and only when you do not pass `--offline`. S3 versions come from the bucket's object keys ([Modules in S3](../guides/s3-modules.md)).
 
 The rule:
 

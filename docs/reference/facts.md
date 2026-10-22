@@ -6,7 +6,9 @@ Facts are plain JSON, one file per repo, named `<org>__<repo>.json` (`acme/infra
 
 ## Compatibility
 
-`schema_version` is `1`. A build reads files from schema 1 up to the version it writes and rejects anything newer with a clear error, so an older `aggregate` never silently misreads facts from a newer `scan`.
+`schema_version` is `2`. A build reads files from schema 1 up to the version it writes and rejects anything newer with a clear error, so an older `aggregate` never silently misreads facts from a newer `scan`.
+
+Schema 2 moved the version of an `http`, `s3` or `gcs` module out of its `address` and into `version`, so every version of a module shares one address. Schema 1 files still read, but their archive modules get no version lookups until they are scanned again.
 
 `aggregate` and `explain` take files or directories. A directory contributes every `*.json` file directly inside it (not subdirectories), except `metrics.json`.
 
@@ -51,8 +53,8 @@ A module is a directory that holds `.tf` or `.tf.json` files. Directories named 
 | `name` | string | The module block label. |
 | `source` | string | The source exactly as written. |
 | `source_kind` | string | `local`, `registry`, `private_registry`, `git`, `http`, `s3`, `gcs` or `unknown`. |
-| `address` | string | The normalized address, shared by every spelling of the same module. For local calls, the path from the repo root. |
-| `version` | string | The version constraint for registry sources, the `?ref=` for git sources, or empty. |
+| `address` | string | The normalized address, shared by every spelling of the same module. For local calls, the path from the repo root. For `http`, `s3` and `gcs` sources, a version in the path is replaced by `*`: `acme-tf.s3.amazonaws.com/vpc/*/vpc.zip`. |
+| `version` | string | The version constraint for registry sources, the `?ref=` for git sources, and for `http`, `s3` and `gcs` sources the version from the path (or the S3 object version from `?version=`); otherwise empty. |
 | `pinned` | string | `exact`, `range` or `none`; empty for local calls. |
 | `count`, `for_each` | boolean | Present and true when the block uses them. |
 | `file`, `line` | string, number | Where the `module` block is: the repo-relative file and its line. Facts written before this field existed leave both out. |
@@ -63,7 +65,7 @@ How `pinned` is decided:
 | --- | --- | --- | --- |
 | Registry | One full version, `1.2.3` or `= 1.2.3` | Anything else, such as `~> 3.15`, `>= 1.0`, `>= 1, < 2` or `1.2` | No `version` |
 | Git | A release tag or a commit SHA as `ref`: `v1.2.0`, `tags/1.2.0`, or a monorepo component tag such as `vpc/v1.2.0` or `vpc-v1.2.0` | Any other ref, such as a branch name | No `ref` |
-| `http`, `s3`, `gcs` | A `ref`, or a version in the path | | Neither |
+| `http`, `s3`, `gcs` | A version in the path (`vpc/v1.2.0/vpc.zip`, `vpc-1.2.0.zip`), or an S3 object version (`?version=`) | | Neither |
 
 A static scan cannot tell a tag from a branch, so a branch named like a release, such as `release-1.2.0`, counts as `exact`.
 

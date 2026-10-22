@@ -66,6 +66,7 @@ modules:
       token_env: GITLAB_TOKEN
   aliases:
     "git::https://github.com/acme/tf-vpc.git": tfe.acme.internal/acme/vpc/aws
+    "s3::https://s3.amazonaws.com/acme-tf/eks/*/eks.zip": github.com/acme/terraform-aws-eks
 
 labels:
   properties: [team, tier]         # custom properties promoted to labels
@@ -140,12 +141,14 @@ How module sources are normalized and where versions are looked up. See [version
 | `registries` | empty | Your private registries, each a `host` (such as `app.terraform.io`, no scheme or path) and an optional `token_env` naming the environment variable that holds its bearer token. Each registry's token is sent only to its own host. A host may be listed once. |
 | `internal_registry` | empty | Host of a single private registry. It predates `registries` and is treated as one more entry of it; an entry in `registries` for the same host wins. |
 | `registry_token_env` | empty | Environment variable holding the bearer token for `internal_registry`. |
-| `aliases` | empty | Map of a module source, as written, to the address it should be reported as. Use it to merge two spellings of one module, or a mirror and its upstream. |
+| `aliases` | empty | Map of a module source, in any spelling, to the address it should be reported as. Use it to merge two spellings of one module, or a mirror and its upstream. A git source or an archive (`s3`, `gcs`, `http`) aliased to a registry address, or an archive aliased to a git repo, takes that kind, so its versions are looked up there; write an archive's version as `*`. See [Modules in S3](guides/s3-modules.md). |
 
 Any registry host other than `registry.terraform.io` and `registry.opentofu.org` is classified `private_registry` whether or not it is listed. Listing a host does two things:
 
 - It gives version lookups a token for it. A host with no `token_env`, or one not listed at all, falls back to the variable the Terraform CLI reads, `TF_TOKEN_<host>` with `.` written as `_` and `-` as `__` (`TF_TOKEN_app_terraform_io`), so a CI job that already runs Terraform needs no extra setup. Without any token, lookups against a registry that needs auth fail with a warning and that module gets no `tf_module_versions_behind` series.
 - It makes sources on that host registry sources even when the host usually means git. `gitlab.com/acme/vpc/aws` is git shorthand unless `gitlab.com` is listed.
+
+Modules in S3 are looked up with AWS credentials from the standard chain (environment, profile, SSO, web identity or instance role) and need `s3:ListBucket`; there is nothing to configure here. See [Modules in S3](guides/s3-modules.md).
 
 ## labels
 

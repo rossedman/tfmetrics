@@ -53,6 +53,7 @@ These functions parse untrusted input, transform data, or run once per repo, mod
 | `filter.Compile`, `filter.Selector.Selected` | Compile user patterns; run once per repo in every org | yes | yes |
 | `versions.Selected`, `versions.Behind` | Interpret version constraints and registry responses | yes | yes |
 | `registry.ParseTags` | Parses `git ls-remote` output from remotes | yes | yes |
+| `registry.ParseS3`, S3 version listing | Parses S3 module addresses from someone's repo, then matches every object key under a prefix | yes | yes |
 | `ghapi.Transport.RoundTrip` | Every GitHub and registry API call goes through it; it owns rate limit waits and backoff, parsing headers from the server | yes | yes |
 | `discover.GitHub.HeadSHAs` | One GraphQL query per 100 repos replaces a git round trip per repo; repo names are embedded in the query | yes | yes |
 | `pipeline.Run` | Orchestrates every clone and scan; the cached path is the common nightly case | yes | |

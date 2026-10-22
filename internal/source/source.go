@@ -42,7 +42,15 @@ var (
 	verSegRe   = regexp.MustCompile(`(^|[/_-])v?\d+\.\d+\.\d+([/._-]|$)`)
 	tagRe      = regexp.MustCompile(`^(?:refs/)?(?:tags/)?([^\p{Z}\p{Cc}]*?[/_-])?([vV]?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$`)
 	scpGitRe   = regexp.MustCompile(`^(?:[\w.-]+@)?([\w.-]+):(.+)$`)
+	// objVerRe finds a version in an object path, as a directory
+	// (vpc/v1.2.0/vpc.zip) or in a file name (vpc-1.2.0.zip).
+	objVerRe = regexp.MustCompile(`(?:^|[/_-])(v?\d+\.\d+\.\d+)(?:[/._-]|$)`)
 )
+
+// VersionPlaceholder stands for the version in the address of a module kept
+// in object storage, such as acme-tf.s3.amazonaws.com/vpc/*/vpc.zip, so every
+// version of the module shares one address.
+const VersionPlaceholder = "*"
 
 // Ref is a classified module source.
 type Ref struct {
@@ -86,11 +94,20 @@ func (n *Normalizer) Classify(src string) Ref {
 	r := n.classify(src)
 	if to, ok := n.aliases[r.Address]; ok {
 		r.Address = to
-		if r.Kind == KindGit || r.Kind == KindHTTP {
-			// An alias points at a registry address; classify the target's kind.
-			t := n.classify(to)
+		t := n.classify(to)
+		switch r.Kind {
+		case KindGit:
+			// A git source aliased to a registry address is that module.
 			if t.Kind == KindRegistry || t.Kind == KindPrivateRegistry {
 				r.Kind = t.Kind
+			}
+		case KindHTTP, KindS3, KindGCS:
+			// An archive aliased to the registry module or git repo it was
+			// published from takes that kind, so its versions are looked up
+			// there.
+			if t.Kind == KindRegistry || t.Kind == KindPrivateRegistry || t.Kind == KindGit {
+				r.Kind = t.Kind
+				r.Address = t.Address
 			}
 		}
 	}
@@ -112,11 +129,11 @@ func (n *Normalizer) classify(src string) Ref {
 		case "git":
 			return gitRef(rest)
 		case "s3":
-			return Ref{Kind: KindS3, Address: stripQuery(stripScheme(rest))}
+			return objectRef(KindS3, rest)
 		case "gcs":
-			return Ref{Kind: KindGCS, Address: stripQuery(stripScheme(rest))}
+			return objectRef(KindGCS, rest)
 		case "http", "https":
-			return Ref{Kind: KindHTTP, Address: stripQuery(stripScheme(rest))}
+			return objectRef(KindHTTP, rest)
 		default:
 			return Ref{Kind: KindUnknown, Address: s}
 		}
@@ -148,13 +165,13 @@ func (n *Normalizer) classify(src string) Ref {
 		h := strings.ToLower(u.Hostname())
 		switch {
 		case strings.HasSuffix(h, ".amazonaws.com"):
-			return Ref{Kind: KindS3, Address: stripQuery(stripScheme(s))}
+			return objectRef(KindS3, s)
 		case h == "www.googleapis.com" && strings.HasPrefix(u.Path, "/storage/"):
-			return Ref{Kind: KindGCS, Address: stripQuery(stripScheme(s))}
+			return objectRef(KindGCS, s)
 		case h == "github.com" || h == "bitbucket.org" || strings.HasSuffix(u.Path, ".git"):
 			return gitRef(s)
 		}
-		return Ref{Kind: KindHTTP, Address: stripQuery(stripScheme(s))}
+		return objectRef(KindHTTP, s)
 	}
 	return Ref{Kind: KindUnknown, Address: s}
 }
@@ -222,18 +239,62 @@ func gitRef(s string) Ref {
 	return Ref{Kind: KindGit, Address: addr + sub, Ref: ref}
 }
 
+// objectRef normalizes a source in object storage or on a web server to
+// host/path[//subdir]. A version in the path moves to Ref, leaving
+// VersionPlaceholder in its place; without one, Ref is the S3 object version
+// from ?version= or ?versionId=, if any.
+func objectRef(kind, s string) Ref {
+	body, query, _ := strings.Cut(stripScheme(s), "?")
+	path, sub := body, ""
+	if i := strings.Index(body, "//"); i >= 0 {
+		path, sub = body[:i], body[i:]
+	}
+	r := Ref{Kind: kind}
+	if host, key, ok := strings.Cut(path, "/"); ok {
+		bucket := ""
+		if kind == KindS3 && S3PathStyle(host) {
+			// The bucket is not part of the version, even if named like one.
+			if b, rest, ok := strings.Cut(key, "/"); ok {
+				bucket, key = b+"/", rest
+			}
+		}
+		if m := objVerRe.FindAllStringSubmatchIndex(key, -1); m != nil {
+			last := m[len(m)-1]
+			r.Ref = key[last[2]:last[3]]
+			key = key[:last[2]] + VersionPlaceholder + key[last[3]:]
+		}
+		path = host + "/" + bucket + key
+	}
+	r.Address = path + sub
+	if r.Ref == "" && query != "" {
+		if q, err := url.ParseQuery(query); err == nil {
+			r.Ref = q.Get("version")
+			if r.Ref == "" {
+				r.Ref = q.Get("versionId")
+			}
+		}
+	}
+	return r
+}
+
+// S3PathStyle reports whether an S3 host names no bucket, so the bucket is the
+// first segment of the path: s3.amazonaws.com, s3.<region>.amazonaws.com,
+// s3-<region>.amazonaws.com, or any host outside amazonaws.com, such as a
+// MinIO server. Virtual-hosted names (<bucket>.s3.amazonaws.com) are not.
+func S3PathStyle(host string) bool {
+	h := strings.ToLower(host)
+	if !strings.HasSuffix(h, ".amazonaws.com") {
+		return true
+	}
+	return strings.HasPrefix(h, "s3.") || strings.HasPrefix(h, "s3-")
+}
+
 // stripScheme removes a URL scheme.
 func stripScheme(s string) string {
 	if i := strings.Index(s, "://"); i >= 0 {
 		return s[i+3:]
 	}
 	return s
-}
-
-// stripQuery removes a URL query string.
-func stripQuery(s string) string {
-	b, _, _ := strings.Cut(s, "?")
-	return b
 }
 
 // cleanLocal tidies a local path without resolving it.

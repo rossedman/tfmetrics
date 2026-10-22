@@ -109,7 +109,8 @@ func TestRead(t *testing.T) {
 		{"missing", filepath.Join(dir, "missing.json"), "no such file"},
 		{"bad json", write("bad.json", `{`), "bad.json"},
 		{"schema zero", write("zero.json", `{"repo":"a/b"}`), "unsupported schema_version 0"},
-		{"schema future", write("future.json", `{"schema_version":2,"repo":"a/b"}`), "unsupported schema_version 2"},
+		{"schema 2", write("two.json", `{"schema_version":2,"repo":"a/b"}`), ""},
+		{"schema future", write("future.json", `{"schema_version":3,"repo":"a/b"}`), "unsupported schema_version 3"},
 		{"schema negative", write("neg.json", `{"schema_version":-1}`), "unsupported schema_version -1"},
 	}
 	for _, tt := range tests {
