@@ -35,7 +35,7 @@ tfmetrics aggregate <facts dir|file>... [flags]
 ### Options inherited from parent commands
 
 ```
-      --config string   config file (default: tfmetrics.yaml in $XDG_CONFIG_HOME/tfmetrics, $HOME or the current directory)
+      --config string   config file (default: the first tfmetrics.yaml or tfmetrics.yml in $XDG_CONFIG_HOME/tfmetrics, ~/.config/tfmetrics, $HOME, then the current directory)
 ```
 
 ### SEE ALSO
