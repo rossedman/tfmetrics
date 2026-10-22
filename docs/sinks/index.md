@@ -10,6 +10,7 @@ A sink is where `aggregate` sends its results. Every sink is generated from the 
 | `csv` | Spreadsheets and quick looks | `modules.csv`, `module_calls.csv` | [CSV](csv.md) |
 | `json` | Archiving a run, your own tooling | `metrics.json` and a copy of every facts file | [JSON](json.md) |
 | `markdown` | PR comments and job summaries | One report per repo | [Markdown](markdown.md) |
+| `sarif` | Code scanning alerts and PR annotations | One SARIF log per repo | [SARIF](sarif.md) |
 
 ## Choose sinks on the command line
 

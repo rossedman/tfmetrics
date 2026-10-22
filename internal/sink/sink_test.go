@@ -127,6 +127,8 @@ func TestNew(t *testing.T) {
 			&OTLP{Endpoint: "localhost:4317", Insecure: true, Headers: map[string]string{"a": "b"}}},
 		{"csv", Spec{Name: "csv"}, &Table{Dir: "out", Format: "csv"}},
 		{"parquet path", Spec{Name: "parquet", Options: map[string]any{"path": "pq"}}, &Table{Dir: "pq", Format: "parquet"}},
+		{"sarif default", Spec{Name: "sarif"}, &SARIF{Dir: filepath.Join("out", "sarif")}},
+		{"sarif options", Spec{Name: "sarif", Options: map[string]any{"path": "alerts", "min_behind": 3}}, &SARIF{Dir: "alerts", MinBehind: 3}},
 		{"markdown default", Spec{Name: "markdown"}, &Markdown{Path: "-", Weights: env.Weights, Stdout: &stdout}},
 		{"markdown options", Spec{Name: "markdown", Options: map[string]any{"path": "r.md", "step_summary": "true"}},
 			&Markdown{Path: "r.md", StepSummary: true, Weights: env.Weights, Stdout: &stdout}},
@@ -214,6 +216,12 @@ func TestOptions(t *testing.T) {
 	for _, k := range []string{"m3", "missing"} {
 		if got := o.strMap(k); got == nil || len(got) != 0 {
 			t.Errorf("strMap %s = %#v, want empty non-nil", k, got)
+		}
+	}
+	ints := options{"i": 3, "f": 2.0, "s": " 4 ", "bad": "x", "b": true}
+	for k, want := range map[string]int{"i": 3, "f": 2, "s": 4, "bad": 9, "b": 9, "missing": 9} {
+		if got := ints.int(k, 9); got != want {
+			t.Errorf("int(%q) = %d, want %d", k, got, want)
 		}
 	}
 	var nilOpts options
