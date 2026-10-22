@@ -124,6 +124,6 @@ Both carry the `owner` label, so routing alerts to the right team needs no extra
 
 - **The metrics** answer "how bad is it, and is it getting better?" across every repo. Use them on dashboards and in alerts.
 - **`who-uses --provider`** answers "which lines do I change?" for one provider. Use it when you start fixing.
-- **`explain`** answers "what does this one repo require?". Use it when you are in that repo.
+- **`explain`** answers "what does this one repo require, and how far behind is each module?". Use it when you are in that repo: it shows every module call's latest release and how many major, minor and patch releases it is behind.
 
 When the fix is moving a module that pins an old provider for you, [Run a module upgrade campaign](upgrade-campaign.md) tracks it to the end.

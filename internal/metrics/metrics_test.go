@@ -449,4 +449,46 @@ func TestProviderAndTerraformVersionsBehind(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("prefetched %v, want %v", got, want)
 	}
+	// PrefetchModules skips providers and Terraform; this repo calls no modules.
+	mods := &fakeLister{byAddr: lister.byAddr}
+	PrefetchModules(context.Background(), []facts.ScanResult{r}, mods, 1, nil)
+	if len(mods.calls) != 0 {
+		t.Errorf("PrefetchModules looked up %v", mods.calls)
+	}
+}
+
+func TestCallGap(t *testing.T) {
+	lister := &fakeLister{
+		byAddr: map[string][]string{
+			"registry.terraform.io/tam/eks/aws": {"17.24.0", "17.24.1", "18.0.0", "18.31.2", "19.0.0", "19.1.0"},
+			"github.com/acme/mono":              {"vpc/v1.0.0", "vpc/v1.0.1", "vpc/v1.1.0", "dns/v9.0.0"},
+		},
+		errs: map[string]error{"registry.terraform.io/acme/broken/aws": errors.New("boom")},
+	}
+	call := func(kind, addr, version string) facts.ModuleCall {
+		return facts.ModuleCall{SourceKind: kind, Address: addr, Version: version, Pinned: source.Pinning(source.Ref{Kind: kind, Ref: version}, version)}
+	}
+	tests := []struct {
+		name                string
+		c                   facts.ModuleCall
+		ok                  bool
+		major, minor, patch int
+	}{
+		{"exact", call(source.KindRegistry, "registry.terraform.io/tam/eks/aws", "17.24.0"), true, 2, 2, 1},
+		{"range selects the newest 18.x", call(source.KindRegistry, "registry.terraform.io/tam/eks/aws", "~> 18.0"), true, 1, 1, 0},
+		{"component tags only", call(source.KindGit, "github.com/acme/mono", "vpc/v1.0.0"), true, 0, 1, 1},
+		{"unpinned", call(source.KindGit, "github.com/acme/mono", ""), false, 0, 0, 0},
+		{"failed lookup", call(source.KindRegistry, "registry.terraform.io/acme/broken/aws", "1.0.0"), false, 0, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g, ok := CallGap(context.Background(), tt.c, lister, nil)
+			if ok != tt.ok || g.Major != tt.major || g.Minor != tt.minor || g.Patch != tt.patch {
+				t.Fatalf("CallGap = %+v, %v; want %d major, %d minor, %d patch, %v", g, ok, tt.major, tt.minor, tt.patch, tt.ok)
+			}
+			if behind, _ := CallBehind(context.Background(), tt.c, lister, nil); behind != g.Major+g.Minor {
+				t.Errorf("CallBehind = %d, gap %+v", behind, g)
+			}
+		})
+	}
 }

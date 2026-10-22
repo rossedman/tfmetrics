@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	goversion "github.com/hashicorp/go-version"
+
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/source"
 	"github.com/rossedman/tfmetrics/internal/versions"
@@ -304,15 +306,26 @@ func repoMetrics(ctx context.Context, b *builder, r facts.ScanResult, base map[s
 // versionsBehind looks up how far one call lags. ok is false when it cannot
 // be known (no lister, unpinned, a SHA ref, or a failed lookup).
 func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int, bool) {
-	if opts.Versions == nil || !needsLookup(c) {
+	pinned, avail, ok := callVersions(ctx, c, opts)
+	if !ok {
 		return 0, false
+	}
+	return versions.Behind(pinned, avail), true
+}
+
+// callVersions looks up the versions available for a module call and resolves
+// the one it uses. ok is false when that cannot be known: no lister, an
+// unpinned call or SHA ref, a failed lookup, or a version nothing satisfies.
+func callVersions(ctx context.Context, c facts.ModuleCall, opts Options) (*goversion.Version, []*goversion.Version, bool) {
+	if opts.Versions == nil || !needsLookup(c) {
+		return nil, nil, false
 	}
 	raw, err := opts.Versions.Versions(ctx, c.SourceKind, c.Address)
 	if err != nil {
 		if opts.OnLookupError != nil {
 			opts.OnLookupError(c.Address, err)
 		}
-		return 0, false
+		return nil, nil, false
 	}
 	constraint := c.Version
 	if prefix, version, ok := source.TagVersion(c.Version); ok && c.SourceKind == source.KindGit {
@@ -322,13 +335,13 @@ func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int,
 	}
 	avail := versions.Parse(raw)
 	if len(avail) == 0 {
-		return 0, false
+		return nil, nil, false
 	}
 	pinned := versions.Selected(constraint, avail)
 	if pinned == nil {
-		return 0, false
+		return nil, nil, false
 	}
-	return versions.Behind(pinned, avail), true
+	return pinned, avail, true
 }
 
 // CallBehind reports how many release lines a module call trails the latest
@@ -338,6 +351,17 @@ func versionsBehind(ctx context.Context, c facts.ModuleCall, opts Options) (int,
 // onErr when it is set.
 func CallBehind(ctx context.Context, c facts.ModuleCall, lister VersionLister, onErr func(string, error)) (int, bool) {
 	return versionsBehind(ctx, c, Options{Versions: lister, OnLookupError: onErr})
+}
+
+// CallGap reports the releases newer than the version a module call uses, by
+// kind. ok is false in the same cases as CallBehind, and the gap's Major+Minor
+// is what CallBehind returns.
+func CallGap(ctx context.Context, c facts.ModuleCall, lister VersionLister, onErr func(string, error)) (versions.Gap, bool) {
+	pinned, avail, ok := callVersions(ctx, c, Options{Versions: lister, OnLookupError: onErr})
+	if !ok {
+		return versions.Gap{}, false
+	}
+	return versions.Compare(pinned, avail), true
 }
 
 // ProviderBehind reports how many release lines the version a provider
@@ -477,6 +501,18 @@ func needsLookup(c facts.ModuleCall) bool {
 // progress, when set, is called with (0, total) before the first lookup and
 // after each one finishes, from any goroutine.
 func Prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLister, n int, progress func(done, total int)) {
+	prefetch(ctx, results, lister, n, progress, true)
+}
+
+// PrefetchModules is Prefetch for module calls only, as CallGap needs them:
+// it skips providers and Terraform releases.
+func PrefetchModules(ctx context.Context, results []facts.ScanResult, lister VersionLister, n int, progress func(done, total int)) {
+	prefetch(ctx, results, lister, n, progress, false)
+}
+
+// prefetch does the work of Prefetch, also looking up providers and
+// Terraform releases when all is set.
+func prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLister, n int, progress func(done, total int), all bool) {
 	if lister == nil {
 		return
 	}
@@ -495,6 +531,9 @@ func Prefetch(ctx context.Context, results []facts.ScanResult, lister VersionLis
 				if needsLookup(c) {
 					want(key{c.SourceKind, c.Address})
 				}
+			}
+			if !all {
+				continue
 			}
 			for _, p := range m.Providers {
 				if addr, ok := source.ProviderAddress(p.Source, p.Name); ok && p.Constraint != "" {

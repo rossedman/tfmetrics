@@ -21,6 +21,7 @@ import (
 	"github.com/rossedman/tfmetrics/internal/metrics"
 	"github.com/rossedman/tfmetrics/internal/pipeline"
 	"github.com/rossedman/tfmetrics/internal/registry"
+	"github.com/rossedman/tfmetrics/internal/report"
 	"github.com/rossedman/tfmetrics/internal/scan"
 	"github.com/rossedman/tfmetrics/internal/sink"
 	"github.com/rossedman/tfmetrics/internal/source"
@@ -143,6 +144,33 @@ func Aggregate(ctx context.Context, c config.Config, results []facts.ScanResult,
 		}
 	}
 	return metrics.Compute(ctx, results, opts)
+}
+
+// Gaps looks up how far behind the latest release each remote module call in
+// results is, for explain: one report.Gaps per result, in order. A failed
+// lookup is reported once per address through hooks.Warn, and its calls are
+// left out.
+func Gaps(ctx context.Context, results []facts.ScanResult, lister metrics.VersionLister, hooks Hooks) []report.Gaps {
+	metrics.PrefetchModules(ctx, results, lister, registry.LookupConcurrency, hooks.Lookup)
+	failed := map[string]bool{}
+	onErr := func(addr string, err error) {
+		if !failed[addr] && hooks.Warn != nil {
+			hooks.Warn(fmt.Sprintf("version lookup for %s: %v", addr, err))
+		}
+		failed[addr] = true
+	}
+	out := make([]report.Gaps, len(results))
+	for i, r := range results {
+		out[i] = report.Gaps{}
+		for _, m := range r.Modules {
+			for _, c := range m.ModuleCalls {
+				if g, ok := metrics.CallGap(ctx, c, lister, onErr); ok {
+					out[i][report.GapKey(m.Path, c.Name)] = g
+				}
+			}
+		}
+	}
+	return out
 }
 
 // SinkSpecs returns the sinks named on the command line, or the configured

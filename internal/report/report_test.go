@@ -11,10 +11,13 @@ import (
 	"testing"
 	"time"
 
+	goversion "github.com/hashicorp/go-version"
+
 	"github.com/rossedman/tfmetrics/internal/config"
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/scan"
 	"github.com/rossedman/tfmetrics/internal/source"
+	"github.com/rossedman/tfmetrics/internal/versions"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files in testdata/")
@@ -37,6 +40,42 @@ func fixture(t testing.TB) facts.ScanResult {
 		t.Fatal(err)
 	}
 	return res
+}
+
+// fixtureGaps returns gaps for some of the fixture's remote calls: each kind
+// of update, one up to date, and the rest unknown.
+func fixtureGaps(t testing.TB) Gaps {
+	t.Helper()
+	eks := versions.Parse([]string{"17.24.0", "17.24.1", "18.0.0", "19.21.0", "19.21.1", "20.0.0", "20.1.0"})
+	s3 := versions.Parse([]string{"3.15.0", "3.15.2", "3.16.0"})
+	dns := versions.Parse([]string{"1.4.0", "1.4.1"})
+	sel := func(c string, avail []*goversion.Version) *goversion.Version {
+		v := versions.Selected(c, avail)
+		if v == nil {
+			t.Fatalf("nothing selected for %s", c)
+		}
+		return v
+	}
+	return Gaps{
+		GapKey("live/prod", "eks"):       versions.Compare(sel("19.21.0", eks), eks),
+		GapKey("live/staging", "eks"):    versions.Compare(sel("17.24.0", eks), eks),
+		GapKey("live/prod", "s3_bucket"): versions.Compare(sel("~> 3.15", s3), s3),
+		GapKey("live/prod", "dns"):       versions.Compare(sel("1.4.0", dns), dns),
+	}
+}
+
+func TestUpdates(t *testing.T) {
+	t.Parallel()
+	u := updates(remoteCalls(fixture(t)), fixtureGaps(t))
+	if u != (Updates{Major: 2, Patch: 1, Current: 1}) || u.Outdated() != 3 || u.String() != "2 major, 0 minor, 1 patch" {
+		t.Errorf("updates = %+v (%s)", u, u)
+	}
+	if got := behind(nil, locatedCall{}); got != "-" {
+		t.Errorf("unknown gap = %q", got)
+	}
+	if kind, ok := updateStyle(versions.UpdatePatch); ok {
+		t.Errorf("patch styled %v", kind)
+	}
 }
 
 // golden compares got with testdata/name, rewriting it under -update.
@@ -66,12 +105,17 @@ func TestGoldenFixture(t *testing.T) {
 		file   string
 		render func(*bytes.Buffer) error
 	}{
-		{"text", "acme-infra.txt", func(b *bytes.Buffer) error { return Text(b, r, nil) }},
-		{"markdown", "acme-infra.md", func(b *bytes.Buffer) error { return Markdown(b, r, nil) }},
-		{"pretty", "acme-infra-pretty.txt", func(b *bytes.Buffer) error { return Pretty(b, r, nil, 0) }},
-		{"pretty narrow", "acme-infra-pretty-80.txt", func(b *bytes.Buffer) error { return Pretty(b, r, nil, 80) }},
+		{"text", "acme-infra.txt", func(b *bytes.Buffer) error { return Text(b, r, Options{}) }},
+		{"markdown", "acme-infra.md", func(b *bytes.Buffer) error { return Markdown(b, r, Options{}) }},
+		{"pretty", "acme-infra-pretty.txt", func(b *bytes.Buffer) error { return Pretty(b, r, Options{}) }},
+		{"pretty narrow", "acme-infra-pretty-80.txt", func(b *bytes.Buffer) error { return Pretty(b, r, Options{Width: 80}) }},
+		{"text with gaps", "acme-infra-gaps.txt", func(b *bytes.Buffer) error { return Text(b, r, Options{Gaps: fixtureGaps(t)}) }},
+		{"markdown with gaps", "acme-infra-gaps.md", func(b *bytes.Buffer) error { return Markdown(b, r, Options{Gaps: fixtureGaps(t)}) }},
+		{"pretty with gaps", "acme-infra-pretty-gaps.txt", func(b *bytes.Buffer) error {
+			return Pretty(b, r, Options{Gaps: fixtureGaps(t), Width: 100})
+		}},
 		{"text custom weights", "acme-infra-weights.txt", func(b *bytes.Buffer) error {
-			return Text(b, r, map[string]float64{"pinned": 1, "parse_clean": 1})
+			return Text(b, r, Options{Weights: map[string]float64{"pinned": 1, "parse_clean": 1}})
 		}},
 	}
 	for _, tt := range tests {
@@ -107,10 +151,10 @@ func TestEmptyRepo(t *testing.T) {
 	t.Parallel()
 	r := facts.ScanResult{Repo: "o/empty", Commit: "abc"}
 	var txt, md bytes.Buffer
-	if err := Text(&txt, r, nil); err != nil {
+	if err := Text(&txt, r, Options{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Markdown(&md, r, nil); err != nil {
+	if err := Markdown(&md, r, Options{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"o/empty @ abc", "owners: unowned", "modules      0 (0 root, 0 child)", "hygiene score 100.0 / 100"} {
@@ -145,7 +189,7 @@ func TestCommitDisplay(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var b bytes.Buffer
-			if err := Text(&b, facts.ScanResult{Repo: "o/r", Commit: tt.commit}, nil); err != nil {
+			if err := Text(&b, facts.ScanResult{Repo: "o/r", Commit: tt.commit}, Options{}); err != nil {
 				t.Fatal(err)
 			}
 			if first, _, _ := strings.Cut(b.String(), "owners:"); first != tt.want {
@@ -166,8 +210,8 @@ func TestDiagnosticLocations(t *testing.T) {
 		},
 	}}}
 	var txt, md bytes.Buffer
-	_ = Text(&txt, r, nil)
-	_ = Markdown(&md, r, nil)
+	_ = Text(&txt, r, Options{})
+	_ = Markdown(&md, r, Options{})
 	for _, want := range []string{"error a.tf:3: with line", "warning b.tf: no line", "error -: no file"} {
 		if !strings.Contains(txt.String(), want) {
 			t.Errorf("text missing %q:\n%s", want, txt.String())
@@ -191,8 +235,8 @@ func TestRemoteCallsSortedAndDashes(t *testing.T) {
 		},
 	}}}
 	var txt, md bytes.Buffer
-	_ = Text(&txt, r, nil)
-	_ = Markdown(&md, r, nil)
+	_ = Text(&txt, r, Options{})
+	_ = Markdown(&md, r, Options{})
 	if strings.Contains(txt.String(), "../local") || strings.Contains(md.String(), "../local") {
 		t.Error("local call listed as remote")
 	}
@@ -240,27 +284,27 @@ func TestWriteErrors(t *testing.T) {
 	t.Parallel()
 	r := fixture(t)
 	// tabwriter buffers, so failures surface at Flush; Markdown's last write errors directly.
-	if err := Text(&failWriter{}, r, nil); err == nil {
+	if err := Text(&failWriter{}, r, Options{}); err == nil {
 		t.Error("Text: want error from failing writer")
 	}
-	if err := Markdown(&failWriter{after: 1 << 20}, r, nil); err != nil {
+	if err := Markdown(&failWriter{after: 1 << 20}, r, Options{}); err != nil {
 		t.Errorf("Markdown with healthy writer: %v", err)
 	}
 	// Markdown reports only the final write error; find the count of writes then fail the last.
 	var n countWriter
-	if err := Markdown(&n, r, nil); err != nil {
+	if err := Markdown(&n, r, Options{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Markdown(&failWriter{after: n.writes - 1}, r, nil); err == nil {
+	if err := Markdown(&failWriter{after: n.writes - 1}, r, Options{}); err == nil {
 		t.Error("Markdown: want error when final write fails")
 	}
 	// Each tabwriter flush in Text can fail independently.
 	var tn countWriter
-	if err := Text(&tn, r, nil); err != nil {
+	if err := Text(&tn, r, Options{}); err != nil {
 		t.Fatal(err)
 	}
 	for after := 0; after < tn.writes; after++ {
-		_ = Text(&failWriter{after: after}, r, nil)
+		_ = Text(&failWriter{after: after}, r, Options{})
 	}
 }
 
@@ -305,7 +349,7 @@ func TestPrettyMarksPinningAndDiagnostics(t *testing.T) {
 		},
 	}}}
 	var b bytes.Buffer
-	if err := Pretty(&b, r, nil, 0); err != nil {
+	if err := Pretty(&b, r, Options{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"not a git checkout", "✗ Duplicate resource  main.tf:3", "! OpenTofu file not parsed  x.tofu", "│ exact", "│ range", "│ none"} {

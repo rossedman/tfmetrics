@@ -49,7 +49,7 @@ func (m *Markdown) Emit(_ context.Context, results []facts.ScanResult, _ metrics
 	}
 	out := io.MultiWriter(writers...)
 	for _, r := range results {
-		if err := report.Markdown(out, r, m.Weights); err != nil {
+		if err := report.Markdown(out, r, report.Options{Weights: m.Weights}); err != nil {
 			return err
 		}
 	}

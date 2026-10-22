@@ -93,3 +93,65 @@ func line(v *goversion.Version) [2]int {
 	}
 	return out
 }
+
+// Update kinds: the biggest kind of release a call is missing.
+const (
+	UpdateMajor   = "major"
+	UpdateMinor   = "minor"
+	UpdatePatch   = "patch"
+	UpdateCurrent = "current"
+)
+
+// Gap is how far a version trails the latest release, counted in releases.
+// Each newer release counts as major, minor or patch by what it changes from
+// the release before it, so Major+Minor equals Behind.
+type Gap struct {
+	Latest              *goversion.Version
+	Major, Minor, Patch int
+}
+
+// Releases returns how many releases are newer than the compared version.
+func (g Gap) Releases() int {
+	return g.Major + g.Minor + g.Patch
+}
+
+// Update returns the biggest kind of release the compared version is missing:
+// UpdateMajor, UpdateMinor, UpdatePatch or UpdateCurrent.
+func (g Gap) Update() string {
+	switch {
+	case g.Major > 0:
+		return UpdateMajor
+	case g.Minor > 0:
+		return UpdateMinor
+	case g.Patch > 0:
+		return UpdatePatch
+	}
+	return UpdateCurrent
+}
+
+// Compare counts the releases (not prereleases) newer than pinned, up to and
+// including the latest, by kind. 1.2.3 against 1.2.4, 1.2.5, 1.3.0 and 2.0.0
+// is 1 major, 1 minor and 2 patch releases behind.
+func Compare(pinned *goversion.Version, available []*goversion.Version) Gap {
+	g := Gap{Latest: Latest(available)}
+	if pinned == nil || g.Latest == nil || !g.Latest.GreaterThan(pinned) {
+		return g
+	}
+	prev := pinned
+	for _, v := range available {
+		if v.Prerelease() != "" || !v.GreaterThan(pinned) || v.GreaterThan(g.Latest) {
+			continue
+		}
+		p, l := line(prev), line(v)
+		switch {
+		case l[0] != p[0]:
+			g.Major++
+		case l[1] != p[1]:
+			g.Minor++
+		default:
+			g.Patch++
+		}
+		prev = v
+	}
+	return g
+}

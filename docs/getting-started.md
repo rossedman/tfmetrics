@@ -80,10 +80,10 @@ Nothing was fetched and nothing was executed. `scan` also takes a git URL or a G
 
 ## Read the report
 
-`explain` turns a facts file into a report: inventory, the hygiene score with the checks behind it, every remote module call and how it is pinned, and parse diagnostics.
+`explain` turns a facts file into a report: inventory, the hygiene score with the checks behind it, every remote module call and how it is pinned, and parse diagnostics. `--offline` keeps it from looking anything up, so this example needs no network:
 
 ```console
-$ tfmetrics explain facts/acme__infra.json
+$ tfmetrics explain facts/acme__infra.json --offline
 acme/infra @ 1c35bc0af618
 owners: acme/platform
 
@@ -123,6 +123,32 @@ diagnostics
 ```
 
 The broken file did not stop the scan. It became a diagnostic, a `parse errors` count and a lower `parse_clean` score.
+
+### How far behind each module is
+
+Without `--offline`, `explain` looks up the releases of every pinned module call, from the registry or the git repo's tags, and adds two columns. `LATEST` is the newest release. `BEHIND` counts the releases newer than the version the call uses, split by kind: a release is *major*, *minor* or *patch* by what it changes from the release before it. An `outdated` line sums up how many calls are missing a major, minor or patch release. These versions were looked up on 2026-10-22, so yours will differ:
+
+```console
+$ tfmetrics explain facts/acme__infra.json
+...
+module calls 8 (1 remote unpinned)
+outdated     3 (3 major, 0 minor, 0 patch)
+...
+remote module calls
+  ADDRESS                                                    KIND              VERSION  PINNED  LATEST   BEHIND                               IN
+  app.terraform.io/acme/sqs/aws                              private_registry  2.1.0    exact   -        -                                    live/prod
+  github.com/acme/tf-dns                                     git               v1.4.0   exact   -        -                                    live/prod
+  github.com/acme/tf-iam                                     git               -        none    -        -                                    live/prod
+  registry.terraform.io/terraform-aws-modules/eks/aws        registry          19.21.0  exact   21.29.0  128 (2 major, 66 minor, 60 patch)    live/prod
+  registry.terraform.io/terraform-aws-modules/eks/aws        registry          17.24.0  exact   21.29.0  249 (4 major, 118 minor, 127 patch)  live/staging
+  registry.terraform.io/terraform-aws-modules/s3-bucket/aws  registry          ~> 3.15  range   5.17.0   51 (2 major, 28 minor, 21 patch)     live/prod
+```
+
+A range constraint is measured from the version `terraform init` would pick: `~> 3.15` picks the newest 3.x. The major and minor counts added together are the call's [`tf_module_versions_behind`](reference/metrics.md#tf_module_versions_behind), so the report and the metric always agree. A `-` means there is nothing to measure (the call is unpinned or pinned to a commit) or the lookup failed: here `acme/tf-dns` and the private registry do not exist, and `explain` warns about each on stderr.
+
+On a terminal the report is styled, and `BEHIND` is red for calls missing a major release, yellow for a minor one and green when up to date:
+
+![tfmetrics explain on a terminal, with latest versions and major, minor and patch releases behind](assets/tutorials/explain.png)
 
 ## Write metrics
 

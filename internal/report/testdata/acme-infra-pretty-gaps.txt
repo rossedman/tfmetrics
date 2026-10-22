@@ -1,0 +1,53 @@
+acme/infra @ 0123456789ab
+owners acme/platform
+
+modules                 resources            module calls             outdated                           lines    parse errors    
+6 (2 root · 4 child)    8 (1 data source)    9 (1 remote unpinned)    3 (2 major · 0 minor · 1 patch)    198      1               
+
+Hygiene  ████████████████████░░░░░░░░░░  65.6 / 100
+  ! Remote module calls pinned           5/6  ██████████░░  weight 30  
+  ! Variables and outputs described      4/8  ██████░░░░░░  weight 15  
+  ! Providers with a version constraint  2/5  █████░░░░░░░  weight 15  
+  ! Roots with required_version          1/2  ██████░░░░░░  weight 15  
+  ! Variables with a type                3/4  █████████░░░  weight 15  
+  ! Modules that parse cleanly           5/6  ██████████░░  weight 10  
+
+Modules
+╭────────────────┬───────┬───────────┬───────┬─────────┬──────────────────╮
+│ Path           │ Kind  │ Resources │ Calls │ Backend │ Required version │
+├────────────────┼───────┼───────────┼───────┼─────────┼──────────────────┤
+│ broken         │ child │ 1         │ 0     │ -       │ -                │
+│ examples/basic │ child │ 0         │ 1     │ -       │ -                │
+│ live/prod      │ root  │ 3         │ 6     │ s3      │ >= 1.6.0         │
+│ live/staging   │ root  │ 1         │ 2     │ cloud   │ -                │
+│ modules/legacy │ child │ 1         │ 0     │ -       │ -                │
+│ modules/vpc    │ child │ 2         │ 0     │ -       │ >= 1.5           │
+╰────────────────┴───────┴───────────┴───────┴─────────┴──────────────────╯
+
+Remote module calls
+╭─────────────────┬──────────────────┬─────────┬────────┬────────┬──────────────────┬──────────────╮
+│ Address         │ Kind             │ Version │ Pinned │ Latest │ Behind           │ In           │
+├─────────────────┼──────────────────┼─────────┼────────┼────────┼──────────────────┼──────────────┤
+│ app.terraform.i │ private_registry │ 2.1.0   │ exact  │ -      │ -                │ live/prod    │
+│ o/acme/sqs/aws  │                  │         │        │        │                  │              │
+│ github.com/acme │ git              │ v1.4.0  │ exact  │ 1.4.1  │ 1 patch          │ live/prod    │
+│ /tf-dns         │                  │         │        │        │                  │              │
+│ github.com/acme │ git              │ -       │ none   │ -      │ -                │ live/prod    │
+│ /tf-iam         │                  │         │        │        │                  │              │
+│ registry.terraf │ registry         │ 19.21.0 │ exact  │ 20.1.0 │ 3 (1 major, 1    │ live/prod    │
+│ orm.io/terrafor │                  │         │        │        │ minor, 1 patch)  │              │
+│ m-aws-          │                  │         │        │        │                  │              │
+│ modules/eks/aws │                  │         │        │        │                  │              │
+│ registry.terraf │ registry         │ 17.24.0 │ exact  │ 20.1.0 │ 6 (3 major, 1    │ live/staging │
+│ orm.io/terrafor │                  │         │        │        │ minor, 2 patch)  │              │
+│ m-aws-          │                  │         │        │        │                  │              │
+│ modules/eks/aws │                  │         │        │        │                  │              │
+│ registry.terraf │ registry         │ ~> 3.15 │ range  │ 3.16.0 │ up to date       │ live/prod    │
+│ orm.io/terrafor │                  │         │        │        │                  │              │
+│ m-aws-          │                  │         │        │        │                  │              │
+│ modules/s3-     │                  │         │        │        │                  │              │
+│ bucket/aws      │                  │         │        │        │                  │              │
+╰─────────────────┴──────────────────┴─────────┴────────┴────────┴──────────────────┴──────────────╯
+
+Diagnostics
+✗ Unclosed configuration block  broken/main.tf:1

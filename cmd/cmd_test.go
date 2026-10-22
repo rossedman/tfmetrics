@@ -517,6 +517,36 @@ func TestExplain(t *testing.T) {
 	}
 }
 
+func TestExplainVersions(t *testing.T) {
+	work := sandbox(t)
+	factsDir := scanFixture(t, work)
+	withLister(t, fakeVersions{
+		"registry.terraform.io/terraform-aws-modules/eks/aws":       {"17.24.0", "18.0.0", "19.21.0", "19.21.1", "20.0.0"},
+		"registry.terraform.io/terraform-aws-modules/s3-bucket/aws": {"3.15.0", "3.16.0"},
+		"github.com/acme/tf-dns":                                    {"v1.4.0", "v1.4.2"},
+	})
+
+	out, errs := mustRun(t, "explain", factsDir)
+	mustContain(t, "text", out, "outdated     3 (2 major, 0 minor, 1 patch)", "LATEST  BEHIND",
+		"20.0.0  2 (1 major, 1 patch)", "20.0.0  4 (3 major, 1 patch)", "3.16.0  up to date", "v1.4.2  1 patch")
+	mustContain(t, "warnings", errs, "version lookup for app.terraform.io/acme/sqs/aws: not found")
+	if strings.Count(errs, "app.terraform.io/acme/sqs/aws") != 1 {
+		t.Errorf("want one warning per address:\n%s", errs)
+	}
+
+	out, _ = mustRun(t, "explain", factsDir, "--format", "markdown")
+	mustContain(t, "markdown", out, "· 3 outdated (2 major, 0 minor, 1 patch)", "| Latest | Behind |", "| `20.0.0` | 4 (3 major, 1 patch) |", "| — | — |")
+
+	out, errs = mustRun(t, "explain", factsDir, "--offline")
+	if strings.Contains(out, "LATEST") || strings.Contains(out, "outdated") || errs != "" {
+		t.Errorf("--offline should skip lookups:\n%s\n%s", out, errs)
+	}
+
+	withLive(t)
+	out, _ = mustRun(t, "explain", factsDir)
+	mustContain(t, "styled", ansi.Strip(out), "outdated", "│ Latest", "up to date")
+}
+
 func TestExplainSeparatesRepos(t *testing.T) {
 	work := sandbox(t)
 	a := simpleRepo(t, work, "one")
