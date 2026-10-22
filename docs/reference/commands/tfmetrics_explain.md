@@ -8,6 +8,11 @@ Print a per-repo report from facts files: module inventory, hygiene score
 and the checks behind it, remote module calls and their pinning, and parse
 diagnostics.
 
+For each pinned remote module call, the report shows the latest release and
+how many releases newer than the version the call uses there are, as major,
+minor and patch releases. That needs registry and git tag lookups; --offline
+skips them.
+
 ```
 tfmetrics explain <facts file|dir>... [flags]
 ```
@@ -17,6 +22,7 @@ tfmetrics explain <facts file|dir>... [flags]
 ```
   tfmetrics explain facts/acme__infra.json
   tfmetrics explain facts/ --format markdown
+  tfmetrics explain facts/ --offline
 ```
 
 ### Options
@@ -24,6 +30,7 @@ tfmetrics explain <facts file|dir>... [flags]
 ```
       --format string   output format: text or markdown (default "text")
   -h, --help            help for explain
+      --offline         skip registry and git tag lookups (no latest or behind columns)
 ```
 
 ### Options inherited from parent commands

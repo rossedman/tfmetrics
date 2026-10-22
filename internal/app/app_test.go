@@ -22,6 +22,7 @@ import (
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/metrics"
 	"github.com/rossedman/tfmetrics/internal/pipeline"
+	"github.com/rossedman/tfmetrics/internal/report"
 	"github.com/rossedman/tfmetrics/internal/sink"
 	"github.com/rossedman/tfmetrics/internal/source"
 )
@@ -625,5 +626,41 @@ func TestTuneGC(t *testing.T) {
 	})
 	if got := debug.SetGCPercent(100); got != 100 {
 		t.Errorf("GOGC set: GC percent = %d, want it left alone", got)
+	}
+}
+
+func TestGaps(t *testing.T) {
+	t.Parallel()
+	in := aggInput()
+	in[0].Modules[0].Path = "live"
+	in[0].Modules[0].ModuleCalls[0].Name = "c"
+	in[0].Modules[0].ModuleCalls = append(in[0].Modules[0].ModuleCalls,
+		facts.ModuleCall{Name: "again", SourceKind: source.KindRegistry, Address: "registry.terraform.io/a/b/c", Version: "1.1.0", Pinned: facts.PinnedExact},
+		facts.ModuleCall{Name: "unpinned", SourceKind: source.KindGit, Address: "github.com/a/b", Pinned: facts.PinnedNone})
+	// Providers and Terraform itself are not looked up.
+	in[0].Modules[0].Providers = []facts.ProviderReq{{Name: "aws", Source: "hashicorp/aws", Constraint: "~> 5.0"}}
+	in[0].Modules[0].RequiredVersion = ">= 1.5"
+	in = append(in, facts.ScanResult{Repo: "acme/empty"})
+
+	var lookups [][2]int
+	gaps := Gaps(context.Background(), in, stubLister{}, Hooks{Lookup: func(done, total int) { lookups = append(lookups, [2]int{done, total}) }})
+	if len(gaps) != 2 || len(gaps[0]) != 2 || len(gaps[1]) != 0 {
+		t.Fatalf("gaps = %v", gaps)
+	}
+	if g := gaps[0][report.GapKey("live", "c")]; g.Major != 1 || g.Minor != 1 || g.Latest.String() != "2.0.0" {
+		t.Errorf("c: %+v", g)
+	}
+	if g := gaps[0][report.GapKey("live", "again")]; g.Major != 1 || g.Minor != 0 {
+		t.Errorf("again: %+v", g)
+	}
+	if want := [][2]int{{0, 1}, {1, 1}}; !reflect.DeepEqual(lookups, want) {
+		t.Errorf("one lookup per address: %v", lookups)
+	}
+
+	// A failed lookup warns once per address and leaves its calls out.
+	var warns []string
+	gaps = Gaps(context.Background(), in, stubLister{err: errors.New("boom")}, Hooks{Warn: func(msg string) { warns = append(warns, msg) }})
+	if len(gaps[0]) != 0 || len(warns) != 1 || warns[0] != "version lookup for registry.terraform.io/a/b/c: boom" {
+		t.Errorf("gaps = %v, warnings = %q", gaps, warns)
 	}
 }

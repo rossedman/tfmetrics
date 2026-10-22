@@ -13,13 +13,16 @@ import (
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/metrics"
 	"github.com/rossedman/tfmetrics/internal/ui"
+	"github.com/rossedman/tfmetrics/internal/versions"
 )
 
 // Pretty writes the styled terminal report for one repo: the same content as
-// Text, with a score bar, colored checks and bordered tables fitted to width
-// cells (0 for no limit). Colors are dropped when w is not a terminal.
-func Pretty(w io.Writer, r facts.ScanResult, weights map[string]float64, width int) error {
-	s := Summarize(r, weights)
+// Text, with a score bar, colored checks and bordered tables fitted to
+// o.Width cells. Colors are dropped when w is not a terminal.
+func Pretty(w io.Writer, r facts.ScanResult, o Options) error {
+	s := Summarize(r, o.Weights)
+	width := o.Width
+	calls := remoteCalls(r)
 	var b strings.Builder
 
 	commit := r.Commit
@@ -36,9 +39,15 @@ func Pretty(w io.Writer, r facts.ScanResult, weights map[string]float64, width i
 		stat("modules", s.Roots+s.Children, fmt.Sprintf("%d root · %d child", s.Roots, s.Children)),
 		stat("resources", s.Resources, dataSources(s.DataSources)),
 		stat("module calls", s.Calls, fmt.Sprintf("%d remote unpinned", s.Unpinned)),
+	}
+	if o.Gaps != nil {
+		u := updates(calls, o.Gaps)
+		stats = append(stats, stat("outdated", u.Outdated(), fmt.Sprintf("%d major · %d minor · %d patch", u.Major, u.Minor, u.Patch)))
+	}
+	stats = append(stats,
 		stat("lines", s.Lines, ""),
 		stat("parse errors", s.ParseErrors, ""),
-	}
+	)
 	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, stats...) + "\n\n")
 
 	score := ui.ScoreStyle(s.Hygiene.Score)
@@ -73,24 +82,42 @@ func Pretty(w io.Writer, r facts.ScanResult, weights map[string]float64, width i
 		b.WriteString(section("Modules", grid([]string{"Path", "Kind", "Resources", "Calls", "Backend", "Required version"}, rows, width, nil)))
 	}
 
-	if calls := remoteCalls(r); len(calls) > 0 {
-		rows := make([][]string, len(calls))
-		for i, c := range calls {
-			rows[i] = []string{c.call.Address, c.call.SourceKind, dash(c.call.Version), c.call.Pinned, c.path}
+	if len(calls) > 0 {
+		headers := []string{"Address", "Kind", "Version", "Pinned", "In"}
+		if o.Gaps != nil {
+			headers = []string{"Address", "Kind", "Version", "Pinned", "Latest", "Behind", "In"}
 		}
-		pinned := func(row, col int) (lipgloss.Style, bool) {
-			if col != 3 || row < 0 {
+		rows := make([][]string, len(calls))
+		kinds := make([]string, len(calls))
+		for i, c := range calls {
+			if o.Gaps != nil {
+				rows[i] = []string{c.call.Address, c.call.SourceKind, dash(c.call.Version), c.call.Pinned, dash(latest(o.Gaps, c)), behind(o.Gaps, c), c.path}
+				if g, ok := o.Gaps[GapKey(c.path, c.call.Name)]; ok {
+					kinds[i] = g.Update()
+				}
+			} else {
+				rows[i] = []string{c.call.Address, c.call.SourceKind, dash(c.call.Version), c.call.Pinned, c.path}
+			}
+		}
+		style := func(row, col int) (lipgloss.Style, bool) {
+			if row < 0 {
 				return lipgloss.Style{}, false
 			}
-			switch rows[row][3] {
-			case facts.PinnedExact:
-				return ui.OK, true
-			case facts.PinnedRange:
-				return ui.Warn, true
+			switch {
+			case col == 3:
+				switch rows[row][3] {
+				case facts.PinnedExact:
+					return ui.OK, true
+				case facts.PinnedRange:
+					return ui.Warn, true
+				}
+				return ui.Err, true
+			case col == 5 && o.Gaps != nil:
+				return updateStyle(kinds[row])
 			}
-			return ui.Err, true
+			return lipgloss.Style{}, false
 		}
-		b.WriteString(section("Remote module calls", grid([]string{"Address", "Kind", "Version", "Pinned", "In"}, rows, width, pinned)))
+		b.WriteString(section("Remote module calls", grid(headers, rows, width, style)))
 	}
 
 	if diags := diagnostics(r); len(diags) > 0 {
@@ -106,6 +133,20 @@ func Pretty(w io.Writer, r facts.ScanResult, weights map[string]float64, width i
 	}
 	_, err := lipgloss.Fprint(w, b.String())
 	return err
+}
+
+// updateStyle colors a call's Behind cell by the biggest update it is
+// missing: major in red, minor in yellow, up to date in green.
+func updateStyle(kind string) (lipgloss.Style, bool) {
+	switch kind {
+	case versions.UpdateMajor:
+		return ui.Err, true
+	case versions.UpdateMinor:
+		return ui.Warn, true
+	case versions.UpdateCurrent:
+		return ui.OK, true
+	}
+	return lipgloss.Style{}, false
 }
 
 // dataSources counts data sources: "1 data source", "162 data sources".

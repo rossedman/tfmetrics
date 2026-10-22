@@ -44,6 +44,8 @@ The rule:
 2. List the available releases, ignoring prereleases, and find the latest.
 3. Count the **distinct `major.minor` lines** newer than the resolved version, up to and including the latest. Patch releases on the same line do not count.
 
+`tfmetrics explain` shows the same lookup per call, split by kind: the major, minor and patch releases newer than the resolved version. Its major and minor counts add up to this value.
+
 So `1.2.3` against releases `1.2.9`, `1.3.0`, `1.4.1` and `2.0.0` is **3** behind: the lines `1.3`, `1.4` and `2.0`. A module already on the latest release is 0.
 
 When a repo calls the same address several times, the series holds the largest value. A call with no version, a SHA ref, a version nothing satisfies, or a failed lookup gets no series, so absence means unknown, never zero. Versions come from the registry API for registry sources and from `git ls-remote` tags (those that parse as semver) for git sources. A component tag such as `vpc/v1.2.0` is compared only with the repo's other `vpc/` tags, so a monorepo's modules each get their own drift. Failed lookups print a warning and are skipped.
