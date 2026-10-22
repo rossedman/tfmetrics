@@ -32,8 +32,8 @@ on:
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - ".github/workflows/docs.yml"
-  release:
-    types: [published]
+  # No release trigger: releases are tagged from main, which already deploys,
+  # and the github-pages environment only accepts deployments from main.
   workflow_dispatch:
 
 permissions: {}

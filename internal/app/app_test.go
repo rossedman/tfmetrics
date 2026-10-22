@@ -537,3 +537,36 @@ func TestRunStats(t *testing.T) {
 		}
 	}
 }
+
+func TestFindConfig(t *testing.T) {
+	t.Parallel()
+	a, b, empty := t.TempDir(), t.TempDir(), t.TempDir()
+	// A binary named tfmetrics, and a directory named like a config, are never configs.
+	if err := os.WriteFile(filepath.Join(empty, "tfmetrics"), []byte("\x7fELF\x00"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(empty, "tfmetrics.yaml"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{filepath.Join(a, "tfmetrics.yml"), filepath.Join(b, "tfmetrics.yaml"), filepath.Join(b, "tfmetrics.yml")} {
+		if err := os.WriteFile(f, []byte("scan: {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name string
+		dirs []string
+		want string
+	}{
+		{"none", []string{empty}, ""},
+		{"yml", []string{empty, a}, filepath.Join(a, "tfmetrics.yml")},
+		{"yaml before yml in one dir", []string{b}, filepath.Join(b, "tfmetrics.yaml")},
+		{"earlier dir wins", []string{a, b}, filepath.Join(a, "tfmetrics.yml")},
+		{"no dirs", nil, ""},
+	}
+	for _, tt := range tests {
+		if got := FindConfig(tt.dirs); got != tt.want {
+			t.Errorf("%s: FindConfig = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
