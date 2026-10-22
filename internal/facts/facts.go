@@ -94,6 +94,8 @@ type ModuleCall struct {
 	Pinned     string `json:"pinned"`      // exact | range | none
 	Count      bool   `json:"count,omitempty"`
 	ForEach    bool   `json:"for_each,omitempty"`
+	File       string `json:"file,omitempty"` // repo-relative file of the module block
+	Line       int    `json:"line,omitempty"` // line of the module block in File
 }
 
 // VarFacts is one variable block.

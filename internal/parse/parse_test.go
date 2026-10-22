@@ -113,12 +113,12 @@ func TestModuleProd(t *testing.T) {
 
 	calls := callsByName(m)
 	want := map[string]facts.ModuleCall{
-		"vpc":       {Name: "vpc", Source: "../../modules/vpc", SourceKind: "local", Address: "modules/vpc", Version: "", Pinned: ""},
-		"eks":       {Name: "eks", Source: "terraform-aws-modules/eks/aws", SourceKind: "registry", Address: "registry.terraform.io/terraform-aws-modules/eks/aws", Version: "19.21.0", Pinned: "exact"},
-		"s3_bucket": {Name: "s3_bucket", Source: "terraform-aws-modules/s3-bucket/aws", SourceKind: "registry", Address: "registry.terraform.io/terraform-aws-modules/s3-bucket/aws", Version: "~> 3.15", Pinned: "range"},
-		"dns":       {Name: "dns", Source: "git::https://github.com/acme/tf-dns.git?ref=v1.4.0", SourceKind: "git", Address: "github.com/acme/tf-dns", Version: "v1.4.0", Pinned: "exact"},
-		"iam":       {Name: "iam", Source: "github.com/acme/tf-iam", SourceKind: "git", Address: "github.com/acme/tf-iam", Version: "", Pinned: "none"},
-		"queues":    {Name: "queues", Source: "app.terraform.io/acme/sqs/aws", SourceKind: "private_registry", Address: "app.terraform.io/acme/sqs/aws", Version: "2.1.0", Pinned: "exact", ForEach: true},
+		"vpc":       {Name: "vpc", Source: "../../modules/vpc", SourceKind: "local", Address: "modules/vpc", Version: "", Pinned: "", File: "live/prod/main.tf", Line: 22},
+		"eks":       {Name: "eks", Source: "terraform-aws-modules/eks/aws", SourceKind: "registry", Address: "registry.terraform.io/terraform-aws-modules/eks/aws", Version: "19.21.0", Pinned: "exact", File: "live/prod/main.tf", Line: 27},
+		"s3_bucket": {Name: "s3_bucket", Source: "terraform-aws-modules/s3-bucket/aws", SourceKind: "registry", Address: "registry.terraform.io/terraform-aws-modules/s3-bucket/aws", Version: "~> 3.15", Pinned: "range", File: "live/prod/main.tf", Line: 32},
+		"dns":       {Name: "dns", Source: "git::https://github.com/acme/tf-dns.git?ref=v1.4.0", SourceKind: "git", Address: "github.com/acme/tf-dns", Version: "v1.4.0", Pinned: "exact", File: "live/prod/main.tf", Line: 37},
+		"iam":       {Name: "iam", Source: "github.com/acme/tf-iam", SourceKind: "git", Address: "github.com/acme/tf-iam", Version: "", Pinned: "none", File: "live/prod/main.tf", Line: 41},
+		"queues":    {Name: "queues", Source: "app.terraform.io/acme/sqs/aws", SourceKind: "private_registry", Address: "app.terraform.io/acme/sqs/aws", Version: "2.1.0", Pinned: "exact", ForEach: true, File: "live/prod/main.tf", Line: 45},
 	}
 	for name, w := range want {
 		if got := calls[name]; got != w {
@@ -821,5 +821,26 @@ func TestModuleWithStacksFiles(t *testing.T) {
 	}
 	if len(m.Resources) != 1 {
 		t.Errorf("fallback resources = %+v", m.Resources)
+	}
+}
+
+func TestModuleCallPositionsInBothLoaders(t *testing.T) {
+	t.Parallel()
+	for _, broken := range []bool{false, true} {
+		root := t.TempDir()
+		files := map[string]string{"stack/calls.tf": "\n\nmodule \"vpc\" {\n  source = \"./vpc\"\n}\n"}
+		if broken {
+			// A parse error sends the module through tfconfig's own loader,
+			// which reports absolute file names.
+			files["stack/broken.tf"] = "resource \"x\" {\n"
+		}
+		writeTree(t, root, files)
+		m := Module(root, "stack", Options{})
+		if len(m.ModuleCalls) != 1 {
+			t.Fatalf("broken=%v: calls = %+v", broken, m.ModuleCalls)
+		}
+		if c := m.ModuleCalls[0]; c.File != "stack/calls.tf" || c.Line != 3 {
+			t.Errorf("broken=%v: position = %s:%d, want stack/calls.tf:3", broken, c.File, c.Line)
+		}
 	}
 }
