@@ -59,7 +59,34 @@ changelog:
       - '^(test|ci|chore|style|build)(\([[:word:]]+\))??!?:'
       - "^Merge "
 
+# brew install rossedman/tap/tfmetrics. GoReleaser writes Casks/tfmetrics.rb
+# to rossedman/homebrew-tap, with a fine-grained token that can write only
+# to that repo (the HOMEBREW_TAP_GITHUB_TOKEN secret). Pre-releases skip it.
+homebrew_casks:
+  - name: tfmetrics
+    ids: [default]
+    repository:
+      owner: rossedman
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "tfmetrics {{ .Tag }}"
+    homepage: https://github.com/rossedman/tfmetrics
+    description: Org-wide metrics from statically parsed Terraform repos
+    license: Apache-2.0
+    skip_upload: auto
+    hooks:
+      post:
+        # The binary isn't notarized: without this, macOS refuses to run it.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tfmetrics"]
+          end
+
 release:
   github:
     owner: rossedman
     name: tfmetrics
+  prerelease: auto
