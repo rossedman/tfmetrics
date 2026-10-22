@@ -274,7 +274,7 @@ func TestModuleRootOverrides(t *testing.T) {
 
 func TestModuleNormalizerAliases(t *testing.T) {
 	t.Parallel()
-	opts := Options{Normalizer: source.NewNormalizer("app.terraform.io", map[string]string{
+	opts := Options{Normalizer: source.NewNormalizer([]string{"app.terraform.io"}, map[string]string{
 		"github.com/acme/tf-iam": "app.terraform.io/acme/iam/aws",
 	})}
 	calls := callsByName(Module(fixtureRoot(), "live/prod", opts))

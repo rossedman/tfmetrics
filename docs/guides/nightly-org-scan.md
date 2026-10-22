@@ -104,7 +104,7 @@ What each part does:
 - **Split commands.** `org` writes facts; `aggregate` turns them into metrics. Running them separately keeps the facts as an artifact you can re-aggregate later with different labels or weights, without cloning anything.
 - **Cache.** A repo whose `HEAD` matches the cache reuses its last facts without a clone, and prints `cached`. The cache key changes every run so the cache is always refreshed, and `restore-keys` restores the latest. Changing scan settings rescans automatically.
 - **`--strict`** makes the job fail if any repo fails to scan. Without it, failures are listed in the log and the run succeeds unless every repo failed.
-- **`aggregate` without `--offline`** looks up the latest versions of every module for `tf_module_versions_behind`. Private registries need [`modules.registry_token_env`](../configuration.md#modules).
+- **`aggregate` without `--offline`** looks up the latest versions of every module for `tf_module_versions_behind`. Private registries need a token: list each one under [`modules.registries`](../configuration.md#modules) with its `token_env`, or set Terraform's `TF_TOKEN_<host>` variables.
 
 ## Reading the log
 

@@ -49,8 +49,13 @@ scan:
   ref: ""                          # branch, tag or commit; empty = default branch
 
 modules:
-  internal_registry: app.terraform.io
-  registry_token_env: TFE_TOKEN
+  registries:                      # one entry per private registry
+    - host: app.terraform.io
+      token_env: TFE_TOKEN
+    - host: tfe.acme.internal
+      token_env: ACME_TFE_TOKEN
+    - host: gitlab.com             # GitLab's module registry
+      token_env: GITLAB_TOKEN
   aliases:
     "git::https://github.com/acme/tf-vpc.git": tfe.acme.internal/acme/vpc/aws
 
@@ -124,9 +129,15 @@ How module sources are normalized and where versions are looked up. See [version
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `internal_registry` | empty | Host of your private registry, such as `app.terraform.io`. It is the host that `registry_token_env`'s token is sent to. Any registry host other than `registry.terraform.io` and `registry.opentofu.org` is already classified `private_registry`. |
-| `registry_token_env` | empty | Environment variable holding a bearer token for `internal_registry`. Without it, version lookups against a private registry that needs auth fail with a warning and that module gets no `tf_module_versions_behind` series. |
+| `registries` | empty | Your private registries, each a `host` (such as `app.terraform.io`, no scheme or path) and an optional `token_env` naming the environment variable that holds its bearer token. Each registry's token is sent only to its own host. A host may be listed once. |
+| `internal_registry` | empty | Host of a single private registry. It predates `registries` and is treated as one more entry of it; an entry in `registries` for the same host wins. |
+| `registry_token_env` | empty | Environment variable holding the bearer token for `internal_registry`. |
 | `aliases` | empty | Map of a module source, as written, to the address it should be reported as. Use it to merge two spellings of one module, or a mirror and its upstream. |
+
+Any registry host other than `registry.terraform.io` and `registry.opentofu.org` is classified `private_registry` whether or not it is listed. Listing a host does two things:
+
+- It gives version lookups a token for it. A host with no `token_env`, or one not listed at all, falls back to the variable the Terraform CLI reads, `TF_TOKEN_<host>` with `.` written as `_` and `-` as `__` (`TF_TOKEN_app_terraform_io`), so a CI job that already runs Terraform needs no extra setup. Without any token, lookups against a registry that needs auth fail with a warning and that module gets no `tf_module_versions_behind` series.
+- It makes sources on that host registry sources even when the host usually means git. `gitlab.com/acme/vpc/aws` is git shorthand unless `gitlab.com` is listed.
 
 ## labels
 

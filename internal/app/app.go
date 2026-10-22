@@ -57,7 +57,16 @@ func LoadConfig(v *viper.Viper) (config.Config, error) {
 
 // Normalizer builds the module source normalizer from config.
 func Normalizer(c config.Config) *source.Normalizer {
-	return source.NewNormalizer(c.Modules.InternalRegistry, c.Modules.Aliases)
+	return source.NewNormalizer(registryHosts(c), c.Modules.Aliases)
+}
+
+// registryHosts returns the hosts of every configured private registry.
+func registryHosts(c config.Config) []string {
+	var hosts []string
+	for _, r := range c.Modules.AllRegistries() {
+		hosts = append(hosts, r.Host)
+	}
+	return hosts
 }
 
 // ScanOptions builds scan options from config.
@@ -78,10 +87,10 @@ func Settings(c config.Config, buildVersion string) string {
 		Version string
 		Ignore  []string
 		Roots   []string
-		Reg     string
+		Reg     []string
 		Aliases map[string]string
 		Owner   string
-	}{facts.SchemaVersion, buildVersion, c.Scan.IgnoreDirs, c.Scan.RootOverrides, c.Modules.InternalRegistry, c.Modules.Aliases, c.Owners.Property})
+	}{facts.SchemaVersion, buildVersion, c.Scan.IgnoreDirs, c.Scan.RootOverrides, registryHosts(c), c.Modules.Aliases, c.Owners.Property})
 	return string(b)
 }
 
@@ -90,13 +99,18 @@ func GitHubToken(c config.Config) string {
 	return os.Getenv(c.Source.GitHub.TokenEnv)
 }
 
-// Resolver builds a version resolver that authenticates to the private
-// registry and to GitHub for git tag lookups.
+// Resolver builds a version resolver that authenticates to each private
+// registry with its own token and to GitHub for git tag lookups. Registries
+// without a token_env fall back to Terraform's TF_TOKEN_<host> variables.
 func Resolver(c config.Config) *registry.Resolver {
 	r := registry.New()
 	r.Tokens = map[string]string{}
-	if c.Modules.InternalRegistry != "" && c.Modules.RegistryTokenEnv != "" {
-		r.Tokens[strings.ToLower(c.Modules.InternalRegistry)] = os.Getenv(c.Modules.RegistryTokenEnv)
+	for _, reg := range c.Modules.AllRegistries() {
+		if reg.TokenEnv != "" {
+			if t := os.Getenv(reg.TokenEnv); t != "" {
+				r.Tokens[reg.Host] = t
+			}
+		}
 	}
 	if t := GitHubToken(c); t != "" {
 		r.GitToken, r.GitTokenHost = t, "github.com"

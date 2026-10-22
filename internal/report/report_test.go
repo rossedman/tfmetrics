@@ -29,7 +29,7 @@ func fixture(t testing.TB) facts.ScanResult {
 		t.Fatal(err)
 	}
 	res, err := scan.Dir(context.Background(), root, scan.Meta{Repo: "acme/infra", Commit: fixtureCommit}, scan.Options{
-		Normalizer: source.NewNormalizer("app.terraform.io", nil),
+		Normalizer: source.NewNormalizer([]string{"app.terraform.io"}, nil),
 		Now:        func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
 	})
 	if err != nil {

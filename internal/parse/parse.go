@@ -54,7 +54,7 @@ type raw struct {
 // repoRoot) and returns its facts.
 func Module(repoRoot, rel string, opts Options) facts.ModuleFacts {
 	if opts.Normalizer == nil {
-		opts.Normalizer = source.NewNormalizer("", nil)
+		opts.Normalizer = source.NewNormalizer(nil, nil)
 	}
 	dir := filepath.Join(repoRoot, filepath.FromSlash(rel))
 	m := facts.ModuleFacts{Path: rel}

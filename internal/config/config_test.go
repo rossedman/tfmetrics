@@ -184,3 +184,53 @@ func TestApplyDefaultsNoUserCacheDir(t *testing.T) {
 		t.Errorf("CacheDir = %q, want empty (caching disabled)", c.Scan.CacheDir)
 	}
 }
+
+func TestAllRegistries(t *testing.T) {
+	t.Parallel()
+	m := Modules{
+		InternalRegistry: " App.Terraform.IO ",
+		RegistryTokenEnv: "TFE_TOKEN",
+		Registries: []Registry{
+			{Host: "GitLab.com", TokenEnv: " GITLAB_TOKEN "},
+			{Host: ""},
+			{Host: "gitlab.com", TokenEnv: "DUP"},
+		},
+	}
+	want := []Registry{{Host: "gitlab.com", TokenEnv: "GITLAB_TOKEN"}, {Host: "app.terraform.io", TokenEnv: "TFE_TOKEN"}}
+	if got := m.AllRegistries(); !reflect.DeepEqual(got, want) {
+		t.Errorf("AllRegistries = %+v, want %+v", got, want)
+	}
+	// An explicit entry for the internal_registry host wins.
+	m.Registries = []Registry{{Host: "app.terraform.io", TokenEnv: "OTHER"}}
+	want = []Registry{{Host: "app.terraform.io", TokenEnv: "OTHER"}}
+	if got := m.AllRegistries(); !reflect.DeepEqual(got, want) {
+		t.Errorf("AllRegistries = %+v, want %+v", got, want)
+	}
+	if got := (Modules{}).AllRegistries(); got != nil {
+		t.Errorf("empty AllRegistries = %+v", got)
+	}
+}
+
+func TestValidateRegistries(t *testing.T) {
+	t.Parallel()
+	for name, tt := range map[string]struct {
+		regs []Registry
+		err  string
+	}{
+		"ok":        {[]Registry{{Host: "gitlab.com"}, {Host: "tf.acme.io:8443", TokenEnv: "X"}}, ""},
+		"no host":   {[]Registry{{TokenEnv: "X"}}, "modules.registries[0]: host is required"},
+		"scheme":    {[]Registry{{Host: "https://tf.acme.io"}}, "without a scheme or path"},
+		"duplicate": {[]Registry{{Host: "gitlab.com"}, {Host: "GitLab.com"}}, "modules.registries[1]: host \"GitLab.com\" is listed twice"},
+	} {
+		c := Default()
+		c.Modules.Registries = tt.regs
+		err := c.Validate()
+		if tt.err == "" {
+			if err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+		} else if err == nil || !strings.Contains(err.Error(), tt.err) {
+			t.Errorf("%s: err = %v, want %q", name, err, tt.err)
+		}
+	}
+}

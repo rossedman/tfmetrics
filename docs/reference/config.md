@@ -72,8 +72,11 @@ scan:
   ref: ""
 
 modules:
-  internal_registry: app.terraform.io
-  registry_token_env: TFE_TOKEN
+  registries:
+    - host: app.terraform.io
+      token_env: TFE_TOKEN
+    - host: gitlab.com
+      token_env: GITLAB_TOKEN
   aliases:
     "git::https://github.com/acme/tf-vpc.git": app.terraform.io/acme/vpc/aws
 
@@ -157,8 +160,11 @@ Kinds are ANDed and values within a kind are ORed; see [Filters](../configuratio
 
 | Key | Type | Default | Override | Description |
 | --- | --- | --- | --- | --- |
-| `internal_registry` | string | empty | `TFMETRICS_MODULES_INTERNAL_REGISTRY` | Host of your private registry. |
-| `registry_token_env` | string | empty | `TFMETRICS_MODULES_REGISTRY_TOKEN_ENV` | Name of the environment variable holding the registry token. |
+| `registries` | list of registries | empty | | Private registries, each with the keys below. |
+| `registries[].host` | string | required | | Registry host, such as `app.terraform.io`. No scheme or path; each host once. |
+| `registries[].token_env` | string | empty (`TF_TOKEN_<host>`) | | Name of the environment variable holding this registry's bearer token. |
+| `internal_registry` | string | empty | `TFMETRICS_MODULES_INTERNAL_REGISTRY` | Host of a single private registry; treated as one more `registries` entry. |
+| `registry_token_env` | string | empty | `TFMETRICS_MODULES_REGISTRY_TOKEN_ENV` | Name of the environment variable holding the `internal_registry` token. |
 | `aliases` | map of string to string | empty | | Module source, as written, to the address it is reported as. |
 
 ### labels

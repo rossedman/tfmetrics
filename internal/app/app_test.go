@@ -51,6 +51,10 @@ scan:
 modules:
   internal_registry: App.Terraform.IO
   registry_token_env: REG_TOKEN
+  registries:
+    - host: gitlab.com
+      token_env: GITLAB_TOKEN
+    - host: tf.acme.io
   aliases:
     github.com/acme/old: app.terraform.io/acme/new/aws
 labels:
@@ -105,7 +109,8 @@ func TestLoadConfigFull(t *testing.T) {
 		len(c.Scan.IgnoreDirs) != 2 || c.Scan.RootOverrides[0] != "live/*" {
 		t.Errorf("scan = %+v", c.Scan)
 	}
-	if c.Modules.InternalRegistry != "App.Terraform.IO" || c.Modules.RegistryTokenEnv != "REG_TOKEN" || len(c.Modules.Aliases) != 1 {
+	if c.Modules.InternalRegistry != "App.Terraform.IO" || c.Modules.RegistryTokenEnv != "REG_TOKEN" || len(c.Modules.Aliases) != 1 ||
+		len(c.Modules.Registries) != 2 || c.Modules.Registries[0] != (config.Registry{Host: "gitlab.com", TokenEnv: "GITLAB_TOKEN"}) {
 		t.Errorf("modules = %+v", c.Modules)
 	}
 	if len(c.Labels.Properties) != 2 || c.Labels.Drop[0] != "resource_type" {
@@ -199,6 +204,10 @@ func TestSettings(t *testing.T) {
 		{"ignore dirs", func(c *config.Config) string { c.Scan.IgnoreDirs = []string{"x"}; return "v1" }},
 		{"root overrides", func(c *config.Config) string { c.Scan.RootOverrides = []string{"x"}; return "v1" }},
 		{"registry", func(c *config.Config) string { c.Modules.InternalRegistry = "r.example"; return "v1" }},
+		{"registries", func(c *config.Config) string {
+			c.Modules.Registries = []config.Registry{{Host: "gitlab.com"}}
+			return "v1"
+		}},
 		{"aliases", func(c *config.Config) string { c.Modules.Aliases = map[string]string{"a": "b"}; return "v1" }},
 		{"owner property", func(c *config.Config) string { c.Owners.Property = "squad"; return "v1" }},
 	}
@@ -247,6 +256,24 @@ func TestGitHubTokenAndResolver(t *testing.T) {
 	if r.Tokens["app.terraform.io"] != "reg_y" || len(r.Tokens) != 1 {
 		t.Errorf("registry tokens = %v (host should be lower-cased)", r.Tokens)
 	}
+
+	// Several registries, each with its own token; one without a token_env
+	// and one whose variable is empty get no entry.
+	t.Setenv("TFM_TEST_GITLAB", "gl_z")
+	t.Setenv("TFM_TEST_EMPTY", "")
+	c.Modules.Registries = []config.Registry{
+		{Host: "GitLab.com", TokenEnv: "TFM_TEST_GITLAB"},
+		{Host: "tf.acme.io"},
+		{Host: "empty.example", TokenEnv: "TFM_TEST_EMPTY"},
+	}
+	want := map[string]string{"app.terraform.io": "reg_y", "gitlab.com": "gl_z"}
+	if got := Resolver(c).Tokens; len(got) != len(want) || got["app.terraform.io"] != "reg_y" || got["gitlab.com"] != "gl_z" {
+		t.Errorf("registry tokens = %v, want %v", got, want)
+	}
+	if n := Normalizer(c); !n.Registry("gitlab.com") || !n.Registry("tf.acme.io") || !n.Registry("app.terraform.io") {
+		t.Error("normalizer should know every configured registry")
+	}
+	c.Modules.Registries = nil
 
 	// No internal registry: no registry token entry.
 	c.Modules.InternalRegistry = ""
