@@ -19,6 +19,9 @@ const (
 	KindS3              = "s3"
 	KindGCS             = "gcs"
 	KindUnknown         = "unknown"
+	// KindProvider is not a module source: it names provider version
+	// lookups, whose address is host/namespace/type.
+	KindProvider = "provider"
 )
 
 // PublicRegistry is the default host for registry sources without a host.
@@ -292,4 +295,43 @@ func TagVersion(ref string) (prefix, version string, ok bool) {
 		version = "v" + version[1:]
 	}
 	return m[1], version, true
+}
+
+// ProviderAddress returns the registry address host/namespace/type of a
+// provider requirement, as terraform init would resolve it: "hashicorp/aws"
+// and "aws" (no source, so the implied hashicorp namespace) both become
+// registry.terraform.io/hashicorp/aws. ok is false for the built-in
+// terraform provider and for sources that are not provider addresses.
+func ProviderAddress(src, name string) (string, bool) {
+	src = strings.ToLower(strings.TrimSpace(src))
+	if src == "" {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" || name == "terraform" || strings.Contains(name, "/") {
+			return "", false
+		}
+		src = "hashicorp/" + name
+	}
+	parts := strings.Split(src, "/")
+	switch {
+	case len(parts) == 2:
+		parts = append([]string{PublicRegistry}, parts...)
+	case len(parts) != 3:
+		return "", false
+	}
+	for _, p := range parts {
+		if p == "" {
+			return "", false
+		}
+	}
+	if parts[1] == "builtin" {
+		return "", false // terraform.io/builtin/terraform
+	}
+	return strings.Join(parts, "/"), true
+}
+
+// ProviderLabel shortens a provider address for display: the default
+// registry's host is dropped, so registry.terraform.io/hashicorp/aws reads
+// hashicorp/aws.
+func ProviderLabel(address string) string {
+	return strings.TrimPrefix(address, PublicRegistry+"/")
 }

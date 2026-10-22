@@ -17,8 +17,9 @@ Sinks come from --sink, or from the sinks list in the config when no --sink
 is given; with neither, the json sink is used. A --sink named in the config
 takes its options from there.
 
-Version drift (tf_module_versions_behind) needs registry and git tag lookups;
---offline skips them.`,
+Version drift (tf_module_versions_behind, tf_provider_versions_behind and
+tf_terraform_versions_behind) needs registry and git tag lookups; --offline
+skips them.`,
 	Example: `  tfmetrics aggregate facts/ --sink openmetrics --sink parquet
   tfmetrics aggregate facts/ --sink json --out metrics/ --offline`,
 	Args: cobra.MinimumNArgs(1),
