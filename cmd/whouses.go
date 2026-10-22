@@ -9,16 +9,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rossedman/tfmetrics/internal/app"
-	"github.com/rossedman/tfmetrics/internal/config"
 	"github.com/rossedman/tfmetrics/internal/facts"
 	"github.com/rossedman/tfmetrics/internal/metrics"
 	"github.com/rossedman/tfmetrics/internal/report"
 	"github.com/rossedman/tfmetrics/internal/ui"
 	"github.com/rossedman/tfmetrics/internal/usage"
 )
-
-// newLister returns the version lister for lookups; tests replace it.
-var newLister = func(c config.Config) metrics.VersionLister { return app.Resolver(c) }
 
 var whoUsesCmd = &cobra.Command{
 	Use:   "who-uses <module|provider> <facts dir|file>...",

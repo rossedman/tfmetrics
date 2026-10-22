@@ -487,6 +487,10 @@ func needsLookup(c facts.ModuleCall) bool {
 		// go-version would otherwise parse a hex SHA such as 0123abc... as a
 		// bogus version and report a misleading 0.
 		return !isSHA(c.Version)
+	case source.KindS3:
+		// A version from the object key; an S3 object version ID is a pin
+		// with no release to compare.
+		return strings.Contains(c.Address, source.VersionPlaceholder)
 	}
 	return false
 }

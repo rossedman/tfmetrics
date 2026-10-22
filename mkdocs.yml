@@ -45,6 +45,7 @@ nav:
       - PR check: guides/pr-check.md
       - Dashboards and trends: guides/dashboards.md
       - Who uses a module: guides/who-uses.md
+      - Modules in S3: guides/s3-modules.md
   - Sinks:
       - Overview: sinks/index.md
       - Prometheus: sinks/openmetrics.md

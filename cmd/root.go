@@ -177,6 +177,9 @@ func aggregate(cmd *cobra.Command, cfg config.Config, results []facts.ScanResult
 	})
 }
 
+// newLister returns the version lister for lookups; tests replace it.
+var newLister = func(c config.Config) metrics.VersionLister { return app.Resolver(c) }
+
 // specNames lists the sinks in specs: "json, openmetrics".
 func specNames(specs []sink.Spec) string {
 	names := make([]string, len(specs))

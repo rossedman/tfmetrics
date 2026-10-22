@@ -143,7 +143,7 @@ calling GitHub.`,
 		if err != nil {
 			return err
 		}
-		m := aggregate(cmd, cfg, results, app.Resolver(cfg))
+		m := aggregate(cmd, cfg, results, newLister(cfg))
 		if err := app.Emit(ctx, specs, sink.Env{OutDir: out, Weights: cfg.Hygiene.Weights, Stdout: cmd.OutOrStdout()}, results, m); err != nil {
 			return err
 		}

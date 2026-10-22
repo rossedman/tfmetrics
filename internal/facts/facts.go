@@ -13,7 +13,7 @@ import (
 )
 
 // SchemaVersion is the version of the facts file format written by this build.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Module kinds.
 const (
