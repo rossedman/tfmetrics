@@ -14,13 +14,11 @@ tfmetrics reads the `.tf` files in your repos and emits one consistent set of me
 
 ## Install
 
-With Go:
-
 ```sh
-go install github.com/rossedman/tfmetrics@latest
+brew install rossedman/tap/tfmetrics
 ```
 
-Or download an archive for Linux, macOS or Windows (amd64 and arm64) from the [releases page](https://github.com/rossedman/tfmetrics/releases/latest).
+The tap works on macOS and Linux. Or install with Go (`go install github.com/rossedman/tfmetrics@latest`), or download an archive for Linux, macOS or Windows (amd64 and arm64) from the [releases page](https://github.com/rossedman/tfmetrics/releases/latest).
 
 Every release is signed with cosign and carries build provenance. To verify a download:
 

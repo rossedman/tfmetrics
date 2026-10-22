@@ -4,6 +4,15 @@ Install the binary, scan one repo on disk, read the report, and write a metrics 
 
 ## Install
 
+=== "Homebrew"
+
+    ```sh
+    brew install rossedman/tap/tfmetrics
+    tfmetrics version
+    ```
+
+    Works on macOS and Linux. `brew upgrade tfmetrics` picks up new releases.
+
 === "go install"
 
     ```sh
