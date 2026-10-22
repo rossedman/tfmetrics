@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -197,4 +198,23 @@ func RunStats(sum pipeline.Summary, gh *discover.GitHub) string {
 		fmt.Fprintf(&b, "; %s %d/%d left", k, l.Remaining, l.Limit)
 	}
 	return b.String()
+}
+
+// ConfigNames are the file names the default config search accepts. Only
+// these: a bare "tfmetrics" would match the binary itself when it is run from
+// the directory it was unpacked into.
+var ConfigNames = []string{"tfmetrics.yaml", "tfmetrics.yml"}
+
+// FindConfig returns the first regular file named in ConfigNames in dirs,
+// searched in order, or "" when there is none.
+func FindConfig(dirs []string) string {
+	for _, d := range dirs {
+		for _, n := range ConfigNames {
+			p := filepath.Join(d, n)
+			if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() {
+				return p
+			}
+		}
+	}
+	return ""
 }

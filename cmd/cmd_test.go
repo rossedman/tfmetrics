@@ -857,3 +857,21 @@ func TestConfigFileWithoutYAMLExtension(t *testing.T) {
 		t.Errorf("--config tfmetrics.json: %v", err)
 	}
 }
+
+// TestBinaryInWorkingDirIsNotConfig is the v0.1.0 bug: run from the directory
+// it was unpacked into, the tfmetrics binary itself was read as the config.
+func TestBinaryInWorkingDirIsNotConfig(t *testing.T) {
+	work := sandbox(t)
+	writeFile(t, filepath.Join(work, "tfmetrics"), "\x7fELF\x02\x01\x01\x00binary")
+	out, _ := mustRun(t, "version")
+	mustContain(t, "version", out, "tfmetrics ")
+
+	// A tfmetrics.yml next to it is still found.
+	factsDir := scanFixture(t, work)
+	prom := filepath.Join(work, "yml-out", "metrics.prom")
+	writeFile(t, filepath.Join(work, "tfmetrics.yml"), fmt.Sprintf("sinks:\n  - openmetrics:\n      path: %s\n", prom))
+	mustRun(t, "aggregate", factsDir, "--offline")
+	if _, err := os.Stat(prom); err != nil {
+		t.Errorf("tfmetrics.yml in the working directory was not used: %v", err)
+	}
+}

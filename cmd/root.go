@@ -2,7 +2,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 
 	"github.com/rossedman/tfmetrics/internal/app"
 	"github.com/rossedman/tfmetrics/internal/sink"
@@ -51,6 +49,18 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: tfmetrics.yaml in $XDG_CONFIG_HOME/tfmetrics, $HOME or the current directory)")
 }
 
+// configDirs lists where tfmetrics.yaml is looked for, in order.
+func configDirs() []string {
+	var dirs []string
+	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
+		dirs = append(dirs, filepath.Join(x, "tfmetrics"))
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(h, ".config", "tfmetrics"), h)
+	}
+	return append(dirs, ".")
+}
+
 // initConfig reads the config file and environment into v.
 func initConfig() error {
 	if cfgFile != "" {
@@ -61,21 +71,12 @@ func initConfig() error {
 		if ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(cfgFile), ".")); !slices.Contains([]string{"json", "toml"}, ext) {
 			v.SetConfigType("yaml")
 		}
-	} else {
-		v.SetConfigName("tfmetrics")
+	} else if p := app.FindConfig(configDirs()); p != "" {
+		v.SetConfigFile(p)
 		v.SetConfigType("yaml")
-		if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-			v.AddConfigPath(filepath.Join(x, "tfmetrics"))
-		}
-		if h, err := os.UserHomeDir(); err == nil {
-			v.AddConfigPath(filepath.Join(h, ".config", "tfmetrics"))
-			v.AddConfigPath(h)
-		}
-		v.AddConfigPath(".")
 	}
-	if err := v.ReadInConfig(); err != nil {
-		var nf viper.ConfigFileNotFoundError
-		if cfgFile != "" || !errors.As(err, &nf) {
+	if cfgFile != "" || v.ConfigFileUsed() != "" {
+		if err := v.ReadInConfig(); err != nil {
 			return fmt.Errorf("reading config: %w", err)
 		}
 	}
