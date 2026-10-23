@@ -29,7 +29,7 @@ make check
 
 This is exactly what CI runs: build, lint, tests with the race detector and coverage gate, command-layout and doc-comment checks, benchmark and fuzz smoke runs, govulncheck, a strict docs build, and a GoReleaser snapshot. Run it before you open a PR.
 
-The [sarifix](https://rossedman.io/sarifix/) workflow also runs golangci-lint and gitleaks, as configured in `sarifix.yaml`. On a pull request it annotates the findings your change introduced; on `main` it uploads to code scanning and keeps one `sarifix` issue per batch of lint findings to fix.
+The [sarifix](https://rossedman.io/sarifix/) workflow also runs golangci-lint, Trivy and Semgrep, as configured in `sarifix.yaml`. On a pull request it annotates the findings your change introduced; on `main` it uploads to code scanning and keeps one `sarifix` issue per batch of findings to fix.
 
 ## Quality bars
 

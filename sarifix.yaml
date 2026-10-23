@@ -12,19 +12,28 @@ scanners:
     scope: dir
     timeout: 10m
 
-  # Secrets in the working tree. --redact keeps the secret itself out of the
-  # SARIF, the code scanning alert and any issue.
-  - name: gitleaks
-    command: ["gitleaks", "dir", "{dir}", "--report-format", "sarif", "--report-path", "{out}", "--redact", "--no-banner"]
+  # Known vulnerabilities in go.mod and requirements-docs.txt, plus
+  # misconfigurations and secrets. The fixture repo's Terraform is insecure
+  # on purpose, so testdata is skipped.
+  - name: trivy
+    match: ["Trivy"]
+    command: ["trivy", "fs", "--scanners", "vuln,misconfig,secret", "--skip-dirs", "testdata", "--format", "sarif", "-o", "{out}", "--quiet", "{dir}"]
     scope: dir
-    offline: true
+
+  # Go security rules from the Semgrep registry. Its SARIF names the tool
+  # "Semgrep OSS". math-random-used flags the retry jitter, and sarifix
+  # doesn't honor nosemgrep suppressions; gosec's G404 in golangci-lint
+  # covers it with a per-line //nolint instead.
+  - name: semgrep
+    match: ["Semgrep OSS"]
+    command: ["semgrep", "scan", "--config", "p/golang", "--exclude-rule", "go.lang.security.audit.crypto.math_random.math-random-used", "--metrics=off", "--sarif", "--output", "{out}", "--quiet", "{dir}"]
+    scope: dir
 
 rules:
-  # Lint findings are batched for fixing. Secrets are reported to code
-  # scanning but never handed to an agent: a leaked secret needs rotating,
-  # not just deleting.
-  allow: ["golangci-lint/*"]
-  deny: ["gitleaks/*"]
+  # Lint and Semgrep findings, and vulnerable dependencies, are batched for
+  # fixing. Trivy's secret and misconfiguration findings are only reported
+  # to code scanning: a leaked secret needs rotating, not just deleting.
+  allow: ["golangci-lint/*", "semgrep/*", "trivy/CVE-*", "trivy/GHSA-*"]
   min_level: warning
 
 paths:
