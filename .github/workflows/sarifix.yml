@@ -1,0 +1,50 @@
+name: sarifix
+
+# Runs the scanners in sarifix.yaml. On pushes to main, weekly and on demand
+# it uploads the scan to code scanning and keeps one issue per fix batch; on
+# pull requests it reports only the findings the change introduced, in the job
+# summary and as annotations on the changed lines.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 6 * * 1" # Mondays
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  sarifix:
+    name: sarifix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read # upload-sarif reads the run's metadata on private repos
+      security-events: write # code scanning upload
+      issues: write # one issue per batch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # pull requests are compared with their merge base
+          persist-credentials: false
+      # golangci-lint needs Go.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Installs sarifix and the scanners sarifix.yaml names, then scans.
+      # SARIFIX_QUEUE (a repository variable) above 0 labels that many issues
+      # agent-ready, which starts paid agent runs; leave it unset to queue
+      # issues by hand. Pinned to a SHA, the action can't see its tag, so
+      # version names the release to install; bump both together.
+      - uses: rossedman/sarifix@0147bd865e6aec0892fce765f16d48b7ac5eb273 # v0.2.3
+        with:
+          version: v0.2.3
+          queue: ${{ vars.SARIFIX_QUEUE }}
