@@ -44,7 +44,7 @@ jobs:
       # agent-ready, which starts paid agent runs; leave it unset to queue
       # issues by hand. Pinned to a SHA, the action can't see its tag, so
       # version names the release to install; bump both together.
-      - uses: rossedman/sarifix@0147bd865e6aec0892fce765f16d48b7ac5eb273 # v0.2.3
+      - uses: rossedman/sarifix@706469faaa3f32eb199873b93219d195583e8537 # v0.3.1
         with:
           version: v0.2.3
           queue: ${{ vars.SARIFIX_QUEUE }}
